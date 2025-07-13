@@ -58,9 +58,16 @@ export class OutboxInterceptor implements NestInterceptor {
       throw new Error('No Sequelize connection provided.');
     }
 
+    console.log('OutboxInterceptor config:', {
+      schema: this.config.database?.schema || 'public',
+      tableName: this.config.database?.tableName || 'outbox_events'
+    });
+
     this.sql = {
       insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
     } as const;
+    
+    console.log('Final SQL:', this.sql.insertOutboxEvent);
   }
 
   private replaceTablePlaceholders(sql: string): string {
@@ -141,6 +148,9 @@ export class OutboxInterceptor implements NestInterceptor {
         const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
 
         try {
+          console.log('Executing SQL:', fullSql);
+          console.log('With values:', outboxEventValues);
+          
           await this.sequelize.query(fullSql, {
             bind: outboxEventValues,
             transaction,
@@ -153,6 +163,12 @@ export class OutboxInterceptor implements NestInterceptor {
             });
           }
         } catch (pgError) {
+          console.error('SQL Error Details:', {
+            sql: fullSql,
+            values: outboxEventValues,
+            error: pgError
+          });
+          
           const error = new OutboxError(
             500,
             OutboxErrorCode.DATABASE_ERROR,

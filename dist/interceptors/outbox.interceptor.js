@@ -44,9 +44,14 @@ let OutboxInterceptor = class OutboxInterceptor {
         if (!this.sequelize) {
             throw new Error('No Sequelize connection provided.');
         }
+        console.log('OutboxInterceptor config:', {
+            schema: this.config.database?.schema || 'public',
+            tableName: this.config.database?.tableName || 'outbox_events'
+        });
         this.sql = {
             insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
         };
+        console.log('Final SQL:', this.sql.insertOutboxEvent);
     }
     replaceTablePlaceholders(sql) {
         const schema = this.config.database?.schema || 'public';
@@ -92,6 +97,8 @@ let OutboxInterceptor = class OutboxInterceptor {
             }).join(', ');
             const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
             try {
+                console.log('Executing SQL:', fullSql);
+                console.log('With values:', outboxEventValues);
                 await this.sequelize.query(fullSql, {
                     bind: outboxEventValues,
                     transaction,
@@ -104,6 +111,11 @@ let OutboxInterceptor = class OutboxInterceptor {
                 }
             }
             catch (pgError) {
+                console.error('SQL Error Details:', {
+                    sql: fullSql,
+                    values: outboxEventValues,
+                    error: pgError
+                });
                 const error = new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.DATABASE_ERROR, 'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox', pgError instanceof Error ? pgError.stack : undefined, pgError);
                 error.throwAsHttpException('Global.OutboxInterceptor');
             }

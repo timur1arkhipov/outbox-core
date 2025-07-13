@@ -27,6 +27,11 @@ let OutboxMigrationService = class OutboxMigrationService {
         }
         this.schema = this.config.database?.schema || 'public';
         this.tableName = this.config.database?.tableName || 'outbox_events';
+        console.log('OutboxMigrationService config:', {
+            schema: this.schema,
+            tableName: this.tableName,
+            fullConfig: this.config.database
+        });
     }
     async createOutboxTable() {
         const createTableSQL = `
