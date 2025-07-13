@@ -111,6 +111,8 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
         };
     }
     static mergeWithDefaults(config) {
+        console.log('Input config:', JSON.stringify(config, null, 2));
+        console.log('DEFAULT_OUTBOX_CONFIG:', JSON.stringify(constants_1.DEFAULT_OUTBOX_CONFIG, null, 2));
         const result = {
             processing: {
                 ...constants_1.DEFAULT_OUTBOX_CONFIG.processing,
@@ -123,6 +125,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
         };
         // Only create database config if not using external Sequelize token
         if (config.sequelizeToken) {
+            console.log('🔧 Using external Sequelize token path');
             result.sequelizeToken = config.sequelizeToken;
             // Keep minimal database config for schema/table name only
             result.database = {
@@ -131,6 +134,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             };
         }
         else {
+            console.log('🔧 Using internal database config path');
             if (!config.database) {
                 throw new Error('Either database config or sequelizeToken must be provided');
             }
@@ -156,6 +160,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
                 ...config.kafka,
             };
         }
+        console.log('Final merged config:', JSON.stringify(result, null, 2));
         return result;
     }
 };

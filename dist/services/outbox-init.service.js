@@ -17,10 +17,18 @@ let OutboxInitService = OutboxInitService_1 = class OutboxInitService {
     constructor(outboxMigration) {
         this.outboxMigration = outboxMigration;
         this.logger = new common_1.Logger(OutboxInitService_1.name);
+        console.log('🏗️ OutboxInitService constructor called at:', new Date().toISOString());
     }
     async onModuleInit() {
+        console.log('🚀 OutboxInitService.onModuleInit() called at:', new Date().toISOString());
         try {
             this.logger.log('🔄 Инициализация Outbox таблицы...');
+            // Логируем конфигурацию перед созданием таблицы
+            this.logger.log('📋 Используемая конфигурация:', JSON.stringify({
+                schema: this.outboxMigration['schema'],
+                tableName: this.outboxMigration['tableName'],
+                fullConfig: this.outboxMigration['config']?.database
+            }, null, 2));
             // Создание таблицы если не существует
             await this.outboxMigration.createTableIfNotExists();
             // Добавление колонки entity_type если обновляетесь с старой версии

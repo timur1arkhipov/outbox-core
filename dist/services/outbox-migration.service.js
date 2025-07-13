@@ -21,6 +21,7 @@ const constants_1 = require("../constants");
 let OutboxMigrationService = class OutboxMigrationService {
     constructor(defaultSequelize, externalSequelize, config) {
         this.config = config;
+        console.log('🏗️ OutboxMigrationService constructor called at:', new Date().toISOString());
         this.sequelize = externalSequelize || defaultSequelize;
         if (!this.sequelize) {
             throw new Error('No Sequelize connection provided. Either configure database settings or provide external connection token.');
@@ -54,6 +55,7 @@ let OutboxMigrationService = class OutboxMigrationService {
       CREATE INDEX IF NOT EXISTS idx_${this.tableName}_entity_type ON ${this.schema}.${this.tableName}(entity_type);
       CREATE INDEX IF NOT EXISTS idx_${this.tableName}_status_event_date ON ${this.schema}.${this.tableName}(status, event_date);
     `;
+        console.log('🔧 Executing CREATE TABLE SQL:', createTableSQL);
         await this.sequelize.query(createTableSQL, {
             type: sequelize_2.QueryTypes.RAW,
         });

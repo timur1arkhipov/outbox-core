@@ -7,11 +7,22 @@ export class OutboxInitService implements OnModuleInit {
 
   constructor(
     private readonly outboxMigration: OutboxMigrationService,
-  ) {}
+  ) {
+    console.log('🏗️ OutboxInitService constructor called at:', new Date().toISOString());
+  }
 
   async onModuleInit() {
+    console.log('🚀 OutboxInitService.onModuleInit() called at:', new Date().toISOString());
+    
     try {
       this.logger.log('🔄 Инициализация Outbox таблицы...');
+      
+      // Логируем конфигурацию перед созданием таблицы
+      this.logger.log('📋 Используемая конфигурация:', JSON.stringify({
+        schema: this.outboxMigration['schema'],
+        tableName: this.outboxMigration['tableName'],
+        fullConfig: this.outboxMigration['config']?.database
+      }, null, 2));
       
       // Создание таблицы если не существует
       await this.outboxMigration.createTableIfNotExists();
