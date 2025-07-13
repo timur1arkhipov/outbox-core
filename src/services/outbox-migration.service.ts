@@ -16,8 +16,6 @@ export class OutboxMigrationService {
     @Optional() @Inject(EXTERNAL_SEQUELIZE_TOKEN) externalSequelize: Sequelize,
     @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
   ) {
-    console.log('🏗️ OutboxMigrationService constructor called at:', new Date().toISOString());
-    
     this.sequelize = externalSequelize || defaultSequelize;
 
     if (!this.sequelize) {
@@ -28,12 +26,6 @@ export class OutboxMigrationService {
 
     this.schema = this.config.database?.schema || 'public';
     this.tableName = this.config.database?.tableName || 'outbox_events';
-    
-    console.log('OutboxMigrationService config:', {
-      schema: this.schema,
-      tableName: this.tableName,
-      fullConfig: this.config.database
-    });
   }
 
   async createOutboxTable(): Promise<void> {
@@ -57,8 +49,6 @@ export class OutboxMigrationService {
       CREATE INDEX IF NOT EXISTS idx_${this.tableName}_entity_type ON ${this.schema}.${this.tableName}(entity_type);
       CREATE INDEX IF NOT EXISTS idx_${this.tableName}_status_event_date ON ${this.schema}.${this.tableName}(status, event_date);
     `;
-
-    console.log('🔧 Executing CREATE TABLE SQL:', createTableSQL);
 
     await this.sequelize.query(createTableSQL, {
       type: QueryTypes.RAW,

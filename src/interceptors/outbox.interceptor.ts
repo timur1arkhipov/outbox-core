@@ -58,16 +58,9 @@ export class OutboxInterceptor implements NestInterceptor {
       throw new Error('No Sequelize connection provided.');
     }
 
-    console.log('OutboxInterceptor config:', {
-      schema: this.config.database?.schema || 'public',
-      tableName: this.config.database?.tableName || 'outbox_events'
-    });
-
     this.sql = {
       insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
     } as const;
-    
-    console.log('Final SQL:', this.sql.insertOutboxEvent);
   }
 
   private replaceTablePlaceholders(sql: string): string {
@@ -105,23 +98,11 @@ export class OutboxInterceptor implements NestInterceptor {
         const user = request.userInfo || { username: 'system' };
         let transaction = request.transaction;
 
-        // Проверяем состояние транзакции
         if (transaction) {
-          console.log('📊 Transaction state:', {
-            finished: transaction.finished,
-            options: transaction.options,
-            connection: !!transaction.connection
-          });
-          
           if (transaction.finished) {
-            console.log('⚠️ Transaction already finished, proceeding without transaction');
             transaction = undefined;
           }
-        } else {
-          console.log('📊 No transaction found in request');
-        }
 
-        // Validate that all items have uuid
         for (const item of data) {
           if (!item.uuid) {
             throw new OutboxError(
@@ -136,7 +117,6 @@ export class OutboxInterceptor implements NestInterceptor {
         const baseTime = Date.now();
         
         data.forEach((item, index) => {
-          // Generate unique timestamp by adding microseconds
           const eventDate = new Date(baseTime + index);
           
           outboxEventValues.push(
@@ -150,7 +130,6 @@ export class OutboxInterceptor implements NestInterceptor {
           );
         });
 
-        // Build VALUES clause with proper placeholders
         const valuesPerRow = 7;
         const valuesClauses = data.map((_, index) => {
           const startIndex = index * valuesPerRow + 1;
@@ -164,10 +143,6 @@ export class OutboxInterceptor implements NestInterceptor {
         const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
 
         try {
-          console.log('🔍 Executing SQL:', fullSql);
-          console.log('📦 With values:', outboxEventValues);
-          console.log('🔗 Using transaction:', !!transaction);
-          
           await this.sequelize.query(fullSql, {
             bind: outboxEventValues,
             transaction,
@@ -180,12 +155,6 @@ export class OutboxInterceptor implements NestInterceptor {
             });
           }
         } catch (pgError) {
-          console.error('SQL Error Details:', {
-            sql: fullSql,
-            values: outboxEventValues,
-            error: pgError
-          });
-          
           const error = new OutboxError(
             500,
             OutboxErrorCode.DATABASE_ERROR,
@@ -194,6 +163,7 @@ export class OutboxInterceptor implements NestInterceptor {
             pgError,
           );
           error.throwAsHttpException('Global.OutboxInterceptor');
+          }
         }
         return res;
       }),

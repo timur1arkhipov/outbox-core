@@ -44,14 +44,9 @@ let OutboxInterceptor = class OutboxInterceptor {
         if (!this.sequelize) {
             throw new Error('No Sequelize connection provided.');
         }
-        console.log('OutboxInterceptor config:', {
-            schema: this.config.database?.schema || 'public',
-            tableName: this.config.database?.tableName || 'outbox_events'
-        });
         this.sql = {
             insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
         };
-        console.log('Final SQL:', this.sql.insertOutboxEvent);
     }
     replaceTablePlaceholders(sql) {
         const schema = this.config.database?.schema || 'public';
@@ -75,65 +70,44 @@ let OutboxInterceptor = class OutboxInterceptor {
             const request = context.switchToHttp().getRequest();
             const user = request.userInfo || { username: 'system' };
             let transaction = request.transaction;
-            // Проверяем состояние транзакции
             if (transaction) {
-                console.log('📊 Transaction state:', {
-                    finished: transaction.finished,
-                    options: transaction.options,
-                    connection: !!transaction.connection
-                });
                 if (transaction.finished) {
-                    console.log('⚠️ Transaction already finished, proceeding without transaction');
                     transaction = undefined;
                 }
-            }
-            else {
-                console.log('📊 No transaction found in request');
-            }
-            // Validate that all items have uuid
-            for (const item of data) {
-                if (!item.uuid) {
-                    throw new result_type_1.OutboxError(400, result_type_1.OutboxErrorCode.VALIDATION_ERROR, 'Outbox event requires uuid field in returned data object');
+                for (const item of data) {
+                    if (!item.uuid) {
+                        throw new result_type_1.OutboxError(400, result_type_1.OutboxErrorCode.VALIDATION_ERROR, 'Outbox event requires uuid field in returned data object');
+                    }
                 }
-            }
-            const outboxEventValues = [];
-            const baseTime = Date.now();
-            data.forEach((item, index) => {
-                // Generate unique timestamp by adding microseconds
-                const eventDate = new Date(baseTime + index);
-                outboxEventValues.push(item.uuid, entityType, eventDate.toISOString(), user.username, outbox_event_dto_1.OutboxEventStatusEnum.READY_TO_SEND, eventType, JSON.stringify(item));
-            });
-            // Build VALUES clause with proper placeholders
-            const valuesPerRow = 7;
-            const valuesClauses = data.map((_, index) => {
-                const startIndex = index * valuesPerRow + 1;
-                const placeholders = Array.from({ length: valuesPerRow }, (_, i) => `$${startIndex + i}`).join(', ');
-                return `(${placeholders})`;
-            }).join(', ');
-            const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
-            try {
-                console.log('🔍 Executing SQL:', fullSql);
-                console.log('📦 With values:', outboxEventValues);
-                console.log('🔗 Using transaction:', !!transaction);
-                await this.sequelize.query(fullSql, {
-                    bind: outboxEventValues,
-                    transaction,
-                    type: sequelize_2.QueryTypes.INSERT,
+                const outboxEventValues = [];
+                const baseTime = Date.now();
+                data.forEach((item, index) => {
+                    const eventDate = new Date(baseTime + index);
+                    outboxEventValues.push(item.uuid, entityType, eventDate.toISOString(), user.username, outbox_event_dto_1.OutboxEventStatusEnum.READY_TO_SEND, eventType, JSON.stringify(item));
                 });
-                if (this.telemetryService) {
-                    data.forEach(() => {
-                        this.telemetryService.recordEventCreated(entityType, eventType);
+                const valuesPerRow = 7;
+                const valuesClauses = data.map((_, index) => {
+                    const startIndex = index * valuesPerRow + 1;
+                    const placeholders = Array.from({ length: valuesPerRow }, (_, i) => `$${startIndex + i}`).join(', ');
+                    return `(${placeholders})`;
+                }).join(', ');
+                const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
+                try {
+                    await this.sequelize.query(fullSql, {
+                        bind: outboxEventValues,
+                        transaction,
+                        type: sequelize_2.QueryTypes.INSERT,
                     });
+                    if (this.telemetryService) {
+                        data.forEach(() => {
+                            this.telemetryService.recordEventCreated(entityType, eventType);
+                        });
+                    }
                 }
-            }
-            catch (pgError) {
-                console.error('SQL Error Details:', {
-                    sql: fullSql,
-                    values: outboxEventValues,
-                    error: pgError
-                });
-                const error = new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.DATABASE_ERROR, 'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox', pgError instanceof Error ? pgError.stack : undefined, pgError);
-                error.throwAsHttpException('Global.OutboxInterceptor');
+                catch (pgError) {
+                    const error = new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.DATABASE_ERROR, 'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox', pgError instanceof Error ? pgError.stack : undefined, pgError);
+                    error.throwAsHttpException('Global.OutboxInterceptor');
+                }
             }
             return res;
         }));

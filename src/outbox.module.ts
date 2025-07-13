@@ -123,9 +123,6 @@ export class OutboxModule {
   private static mergeWithDefaults(
     config: Partial<OutboxConfig>,
   ): OutboxConfig {
-    console.log('Input config:', JSON.stringify(config, null, 2));
-    console.log('DEFAULT_OUTBOX_CONFIG:', JSON.stringify(DEFAULT_OUTBOX_CONFIG, null, 2));
-    
     const result: Partial<OutboxConfig> = {
       processing: {
         ...DEFAULT_OUTBOX_CONFIG.processing,
@@ -137,17 +134,13 @@ export class OutboxModule {
       },
     };
 
-    // Only create database config if not using external Sequelize token
     if (config.sequelizeToken) {
-      console.log('🔧 Using external Sequelize token path');
       result.sequelizeToken = config.sequelizeToken;
-      // Keep minimal database config for schema/table name only
       result.database = {
         schema: config.database?.schema || DEFAULT_OUTBOX_CONFIG.database!.schema,
         tableName: config.database?.tableName || DEFAULT_OUTBOX_CONFIG.database!.tableName,
       } as DatabaseConfig;
     } else {
-      console.log('🔧 Using internal database config path');
       if (!config.database) {
         throw new Error('Either database config or sequelizeToken must be provided');
       }
@@ -157,10 +150,8 @@ export class OutboxModule {
       } as DatabaseConfig;
     }
 
-    // Only create kafka config if not using external producer token
     if (config.kafkaProducerToken) {
       result.kafkaProducerToken = config.kafkaProducerToken;
-      // Keep minimal kafka config for topic name only
       result.kafka = {
         topic: config.kafka?.topic || DEFAULT_OUTBOX_CONFIG.kafka!.topic,
       } as KafkaConfig;
@@ -174,7 +165,6 @@ export class OutboxModule {
       } as KafkaConfig;
     }
 
-    console.log('Final merged config:', JSON.stringify(result, null, 2));
     return result as OutboxConfig;
   }
 }
