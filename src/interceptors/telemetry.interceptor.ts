@@ -9,9 +9,7 @@ import { Observable, tap, catchError, throwError } from 'rxjs';
 import { Reflector } from '@nestjs/core';
 import {
   TELEMETRY_TRACE_KEY,
-  TELEMETRY_METRICS_KEY,
   TraceConfig,
-  MetricsConfig,
 } from '../decorators/telemetry.decorator';
 import { OutboxTelemetryService } from '../services/outbox-telemetry.service';
 
@@ -32,46 +30,26 @@ export class TelemetryInterceptor implements NestInterceptor {
       [context.getHandler(), context.getClass()],
     );
 
-    const metricsConfig = this.reflector.getAllAndOverride<MetricsConfig>(
-      TELEMETRY_METRICS_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-
-    if (!traceConfig && !metricsConfig) {
+    if (!traceConfig) {
       return next.handle();
     }
 
     const methodName = context.getHandler().name;
     const className = context.getClass().name;
-    const operationName = traceConfig?.name || `${className}.${methodName}`;
+    const operationName = traceConfig.name || `${className}.${methodName}`;
 
     const startTime = Date.now();
     const span = this.telemetryService.startSpan(operationName, {
       class: className,
       method: methodName,
-      ...traceConfig?.attributes,
+      ...traceConfig.attributes,
     });
-
-          if (metricsConfig?.counter && this.telemetryService) {
-        this.telemetryService.incrementCounter(
-          metricsConfig.counter,
-          metricsConfig.attributes || {}
-        );
-      }
 
     return next.handle().pipe(
       tap((result) => {
         const duration = Date.now() - startTime;
         
-        if (metricsConfig?.histogram && this.telemetryService) {
-          this.telemetryService.recordHistogram(
-            metricsConfig.histogram,
-            duration,
-            { ...metricsConfig.attributes, status: 'success' }
-          );
-        }
-
-        if (traceConfig?.recordMetrics && this.telemetryService) {
+        if (traceConfig.recordMetrics && this.telemetryService) {
           this.telemetryService.recordOperationSuccess(
             operationName,
             duration,
@@ -85,19 +63,11 @@ export class TelemetryInterceptor implements NestInterceptor {
       catchError((error) => {
         const duration = Date.now() - startTime;
 
-        if (metricsConfig?.histogram && this.telemetryService) {
-          this.telemetryService.recordHistogram(
-            metricsConfig.histogram,
-            duration,
-            { ...metricsConfig.attributes, status: 'error' }
-          );
-        }
-
-        if (traceConfig?.recordException && this.telemetryService) {
+        if (traceConfig.recordException && this.telemetryService) {
           this.telemetryService.recordException(span, error);
         }
 
-        if (traceConfig?.recordMetrics && this.telemetryService) {
+        if (traceConfig.recordMetrics && this.telemetryService) {
           this.telemetryService.recordOperationError(
             operationName,
             duration,

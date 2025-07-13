@@ -19,7 +19,7 @@ import {
 } from '../types/result.type';
 import { OUTBOX_CONFIG } from '../constants';
 import { OutboxConfig } from '../interfaces/outbox-config.interface';
-import { OutboxOperation } from '../decorators/telemetry.decorator';
+import { OutboxOperation, WithTrace } from '../decorators/telemetry.decorator';
 
 @Injectable()
 export class OutboxService {
@@ -35,6 +35,7 @@ export class OutboxService {
     @Optional() private readonly telemetryService?: OutboxTelemetryService,
   ) {}
 
+  @WithTrace('outbox.receive_events', { operation: 'query' })
   public async receiveOutboxEventInfomodels(
     filters: OutboxEventFiltersDto,
     transaction?: Transaction,
@@ -54,6 +55,7 @@ export class OutboxService {
     return outboxEvents;
   }
 
+  @WithTrace('outbox.select_before_events')
   public async selectBeforeOutboxEventsInfomodels(
     entity_uuids: string[],
     transaction?: Transaction,
@@ -74,6 +76,7 @@ export class OutboxService {
     return outboxEvents;
   }
 
+  @WithTrace('outbox.update_events', { operation: 'update' })
   public async updateOutboxEvents(
     uuid: string[],
     data: UpdateOutboxEventDto,
@@ -441,6 +444,7 @@ export class OutboxService {
     return { data: updatedEvents, _error: null };
   }
 
+  @OutboxOperation('cleanup_stuck_events')
   public async cleanupStuckEvents(): PromiseWithError<CleanupResultDto> {
     const result = await this.dbService.cleanupStuckEvents(
       this.PROCESSING_TIMEOUT_MINUTES,

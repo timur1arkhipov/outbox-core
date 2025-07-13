@@ -1,4 +1,6 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, Inject } from '@nestjs/common';
+import { OutboxConfig } from '../interfaces/outbox-config.interface';
+import { OUTBOX_CONFIG } from '../constants';
 
 interface Meter {
   createCounter(name: string, options?: any): any;
@@ -20,59 +22,111 @@ interface Span {
 
 @Injectable()
 export class OutboxTelemetryService implements OnModuleInit {
+  private readonly logger = new Logger(OutboxTelemetryService.name);
   private meter?: Meter;
   private tracer?: Tracer;
   private isEnabled = false;
+  private initializationError?: string;
 
   private counters = new Map<string, any>();
   private histograms = new Map<string, any>();
   private gauges = new Map<string, any>();
 
-  constructor() {
+  constructor(
+    @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
+  ) {
     this.initializeTelemetry();
   }
 
   onModuleInit() {
     if (this.isEnabled) {
       this.createDefaultMetrics();
+      this.logger.log('Телеметрия успешно инициализирована');
+    } else {
+      this.logger.warn(`Телеметрия отключена: ${this.initializationError}`);
     }
   }
 
   private initializeTelemetry() {
+    if (!this.config.telemetry?.enabled) {
+      this.initializationError = 'Телеметрия отключена в конфигурации';
+      this.isEnabled = false;
+      return;
+    }
+
     try {
       const otelApi = require('@opentelemetry/api');
-      this.meter = otelApi.metrics.getMeter('@rolfcorp/nestjs-outbox', '1.0.0');
-      this.tracer = otelApi.trace.getTracer('@rolfcorp/nestjs-outbox', '1.0.0');
+      
+      const tracerProvider = otelApi.trace.getTracerProvider();
+      const meterProvider = otelApi.metrics.getMeterProvider();
+      
+      if (!tracerProvider || tracerProvider.constructor.name === 'NoopTracerProvider') {
+        this.initializationError = 'OpenTelemetry TracerProvider не инициализирован. Убедитесь, что SDK настроен в main.ts';
+        this.isEnabled = false;
+        return;
+      }
+
+      if (!meterProvider || meterProvider.constructor.name === 'NoopMeterProvider') {
+        this.initializationError = 'OpenTelemetry MeterProvider не инициализирован. Убедитесь, что SDK настроен в main.ts';
+        this.isEnabled = false;
+        return;
+      }
+
+      this.meter = otelApi.metrics.getMeter(
+        this.config.telemetry.serviceName || '@rolfcorp/nestjs-outbox',
+        this.config.telemetry.serviceVersion || '1.0.0'
+      );
+      
+      this.tracer = otelApi.trace.getTracer(
+        this.config.telemetry.serviceName || '@rolfcorp/nestjs-outbox',
+        this.config.telemetry.serviceVersion || '1.0.0'
+      );
+
       this.isEnabled = true;
-    } catch (_error) {
+      this.logger.debug('OpenTelemetry API успешно инициализирован');
+      
+    } catch (error) {
+      this.initializationError = `Ошибка инициализации OpenTelemetry: ${error instanceof Error ? error.message : String(error)}`;
       this.isEnabled = false;
+      this.logger.error(this.initializationError);
     }
   }
 
   private createDefaultMetrics() {
-    if (!this.meter) return;
+    if (!this.meter || !this.config.telemetry?.enableDefaultMetrics) return;
 
-    this.getOrCreateCounter('outbox_events_created_total', 'Total number of outbox events created');
-    this.getOrCreateCounter('outbox_events_sent_total', 'Total number of outbox events sent to Kafka');
-    this.getOrCreateCounter('outbox_events_failed_total', 'Total number of failed outbox events');
-    this.getOrCreateCounter('outbox_kafka_messages_total', 'Total number of Kafka messages sent');
-    
-    this.getOrCreateHistogram('outbox_processing_duration_ms', 'Duration of outbox event processing in milliseconds');
-    this.getOrCreateHistogram('outbox_chunk_processing_duration_ms', 'Duration of chunk processing in milliseconds');
-    this.getOrCreateHistogram('outbox_kafka_send_duration_ms', 'Duration of Kafka send operations in milliseconds');
-    
-    this.getOrCreateGauge('outbox_queue_size', 'Current number of events in outbox queue');
-    this.getOrCreateGauge('outbox_processing_events', 'Current number of events being processed');
-    this.getOrCreateGauge('outbox_stuck_events', 'Current number of stuck events');
+    try {
+      this.getOrCreateCounter('outbox_events_created_total', 'Total number of outbox events created');
+      this.getOrCreateCounter('outbox_events_sent_total', 'Total number of outbox events sent to Kafka');
+      this.getOrCreateCounter('outbox_events_failed_total', 'Total number of failed outbox events');
+      this.getOrCreateCounter('outbox_kafka_messages_total', 'Total number of Kafka messages sent');
+      
+      this.getOrCreateHistogram('outbox_processing_duration_ms', 'Duration of outbox event processing in milliseconds');
+      this.getOrCreateHistogram('outbox_chunk_processing_duration_ms', 'Duration of chunk processing in milliseconds');
+      this.getOrCreateHistogram('outbox_kafka_send_duration_ms', 'Duration of Kafka send operations in milliseconds');
+      
+      this.getOrCreateGauge('outbox_queue_size', 'Current number of events in outbox queue');
+      this.getOrCreateGauge('outbox_processing_events', 'Current number of events being processed');
+      this.getOrCreateGauge('outbox_stuck_events', 'Current number of stuck events');
+      
+      this.logger.debug('Стандартные метрики созданы');
+    } catch (error) {
+      this.logger.error('Ошибка создания стандартных метрик:', error);
+    }
   }
 
   startSpan(name: string, attributes?: Record<string, string | number | boolean>): Span {
-    if (!this.isEnabled || !this.tracer) {
+    if (!this.isEnabled || !this.tracer || !this.config.telemetry?.enableTracing) {
       return this.createNoOpSpan();
     }
 
-    const span = this.tracer.startSpan(name, { attributes });
-    return span;
+    try {
+      const span = this.tracer.startSpan(name, { attributes });
+      return span;
+    } catch (error) {
+      this.logger.error('Ошибка создания span:', error);
+      return this.createNoOpSpan();
+    }
   }
 
   incrementCounter(name: string, attributes: Record<string, string | number | boolean> = {}, value = 1) {
@@ -246,5 +300,26 @@ export class OutboxTelemetryService implements OnModuleInit {
 
   get enabled(): boolean {
     return this.isEnabled;
+  }
+
+  get initError(): string | undefined {
+    return this.initializationError;
+  }
+
+  getStatus() {
+    return {
+      enabled: this.isEnabled,
+      error: this.initializationError,
+      config: {
+        telemetryEnabled: this.config.telemetry?.enabled,
+        tracingEnabled: this.config.telemetry?.enableTracing,
+        metricsEnabled: this.config.telemetry?.enableMetrics,
+        serviceName: this.config.telemetry?.serviceName,
+      },
+      providers: {
+        hasTracer: !!this.tracer,
+        hasMeter: !!this.meter,
+      }
+    };
   }
 } 
