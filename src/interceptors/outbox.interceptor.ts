@@ -103,7 +103,23 @@ export class OutboxInterceptor implements NestInterceptor {
         const data = Array.isArray(res.data) ? res.data : [res.data];
         const request = context.switchToHttp().getRequest<OutboxRequest>();
         const user = request.userInfo || { username: 'system' };
-        const transaction = request.transaction;
+        let transaction = request.transaction;
+
+        // Проверяем состояние транзакции
+        if (transaction) {
+          console.log('📊 Transaction state:', {
+            finished: transaction.finished,
+            options: transaction.options,
+            connection: !!transaction.connection
+          });
+          
+          if (transaction.finished) {
+            console.log('⚠️ Transaction already finished, proceeding without transaction');
+            transaction = undefined;
+          }
+        } else {
+          console.log('📊 No transaction found in request');
+        }
 
         // Validate that all items have uuid
         for (const item of data) {
@@ -148,8 +164,9 @@ export class OutboxInterceptor implements NestInterceptor {
         const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
 
         try {
-          console.log('Executing SQL:', fullSql);
-          console.log('With values:', outboxEventValues);
+          console.log('🔍 Executing SQL:', fullSql);
+          console.log('📦 With values:', outboxEventValues);
+          console.log('🔗 Using transaction:', !!transaction);
           
           await this.sequelize.query(fullSql, {
             bind: outboxEventValues,
