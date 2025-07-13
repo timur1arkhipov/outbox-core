@@ -138,7 +138,13 @@ export class AgreementsController {
 }
 ```
 
-## Создание таблицы
+## Автоматическая инициализация
+
+Библиотека автоматически создает таблицу `outbox_events` при запуске приложения. Никаких дополнительных действий не требуется.
+
+## Ручная инициализация (опционально)
+
+Если вы хотите контролировать процесс создания таблицы вручную:
 
 ```typescript
 import { Injectable, OnModuleInit } from '@nestjs/common';
@@ -151,30 +157,10 @@ export class AppService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.outboxMigration.createTableIfNotExists();
-  }
-}
-```
-
-## Миграция существующих таблиц
-
-Если вы обновляетесь с более ранней версии библиотеки, добавьте отсутствующую колонку `entity_type`:
-
-```typescript
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { OutboxMigrationService } from '@rolfcorp/nestjs-outbox';
-
-@Injectable()
-export class AppService implements OnModuleInit {
-  constructor(
-    private readonly outboxMigration: OutboxMigrationService
-  ) {}
-
-  async onModuleInit() {
-    // Для новых установок
+    // Создание таблицы если не существует
     await this.outboxMigration.createTableIfNotExists();
     
-    // Для обновления существующих таблиц (добавляет entity_type колонку)
+    // Добавление колонки entity_type если обновляетесь с старой версии
     await this.outboxMigration.addEntityTypeColumnIfNotExists();
   }
 }

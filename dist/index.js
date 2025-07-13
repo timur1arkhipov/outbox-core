@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OutboxErrorCode = exports.OutboxError = exports.DEFAULT_OUTBOX_CONFIG = exports.EXTERNAL_KAFKA_PRODUCER_TOKEN = exports.EXTERNAL_SEQUELIZE_TOKEN = exports.OUTBOX_CONFIG = exports.CleanupResultDto = exports.ChunkProcessingDto = exports.UpdateOutboxEventDto = exports.OutboxEventMsgDto = exports.OutboxEventFiltersDto = exports.OutboxEventStatusEnum = exports.OutboxEventDto = exports.OutboxOperation = exports.WithTelemetry = exports.WithMetrics = exports.WithTrace = exports.OutboxEvent = exports.TelemetryInterceptor = exports.OutboxInterceptor = exports.OutboxTelemetryService = exports.OutboxMigrationService = exports.OutboxProducerService = exports.OutboxDbService = exports.OutboxService = exports.OutboxModule = void 0;
+exports.OutboxErrorCode = exports.OutboxError = exports.DEFAULT_OUTBOX_CONFIG = exports.EXTERNAL_KAFKA_PRODUCER_TOKEN = exports.EXTERNAL_SEQUELIZE_TOKEN = exports.OUTBOX_CONFIG = exports.CleanupResultDto = exports.ChunkProcessingDto = exports.UpdateOutboxEventDto = exports.OutboxEventMsgDto = exports.OutboxEventFiltersDto = exports.OutboxEventStatusEnum = exports.OutboxEventDto = exports.OutboxOperation = exports.WithTelemetry = exports.WithMetrics = exports.WithTrace = exports.OutboxEvent = exports.TelemetryInterceptor = exports.OutboxInterceptor = exports.OutboxTelemetryService = exports.OutboxInitService = exports.OutboxMigrationService = exports.OutboxProducerService = exports.OutboxDbService = exports.OutboxService = exports.OutboxModule = void 0;
 var outbox_module_1 = require("./outbox.module");
 Object.defineProperty(exports, "OutboxModule", { enumerable: true, get: function () { return outbox_module_1.OutboxModule; } });
 var outbox_service_1 = require("./services/outbox.service");
@@ -11,6 +11,8 @@ var outbox_producer_service_1 = require("./services/outbox-producer.service");
 Object.defineProperty(exports, "OutboxProducerService", { enumerable: true, get: function () { return outbox_producer_service_1.OutboxProducerService; } });
 var outbox_migration_service_1 = require("./services/outbox-migration.service");
 Object.defineProperty(exports, "OutboxMigrationService", { enumerable: true, get: function () { return outbox_migration_service_1.OutboxMigrationService; } });
+var outbox_init_service_1 = require("./services/outbox-init.service");
+Object.defineProperty(exports, "OutboxInitService", { enumerable: true, get: function () { return outbox_init_service_1.OutboxInitService; } });
 var outbox_telemetry_service_1 = require("./services/outbox-telemetry.service");
 Object.defineProperty(exports, "OutboxTelemetryService", { enumerable: true, get: function () { return outbox_telemetry_service_1.OutboxTelemetryService; } });
 var outbox_interceptor_1 = require("./interceptors/outbox.interceptor");

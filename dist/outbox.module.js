@@ -14,6 +14,7 @@ const outbox_service_1 = require("./services/outbox.service");
 const outbox_db_service_1 = require("./services/outbox.db.service");
 const outbox_producer_service_1 = require("./services/outbox-producer.service");
 const outbox_migration_service_1 = require("./services/outbox-migration.service");
+const outbox_init_service_1 = require("./services/outbox-init.service");
 const outbox_interceptor_1 = require("./interceptors/outbox.interceptor");
 const outbox_telemetry_service_1 = require("./services/outbox-telemetry.service");
 const telemetry_interceptor_1 = require("./interceptors/telemetry.interceptor");
@@ -31,6 +32,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             outbox_producer_service_1.OutboxProducerService,
             outbox_service_1.OutboxService,
             outbox_migration_service_1.OutboxMigrationService,
+            outbox_init_service_1.OutboxInitService,
             outbox_telemetry_service_1.OutboxTelemetryService,
             outbox_interceptor_1.OutboxInterceptor,
             telemetry_interceptor_1.TelemetryInterceptor,
@@ -59,6 +61,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
                 outbox_db_service_1.OutboxDbService,
                 outbox_producer_service_1.OutboxProducerService,
                 outbox_migration_service_1.OutboxMigrationService,
+                outbox_init_service_1.OutboxInitService,
                 outbox_telemetry_service_1.OutboxTelemetryService,
                 outbox_interceptor_1.OutboxInterceptor,
                 telemetry_interceptor_1.TelemetryInterceptor,
@@ -81,6 +84,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             outbox_producer_service_1.OutboxProducerService,
             outbox_service_1.OutboxService,
             outbox_migration_service_1.OutboxMigrationService,
+            outbox_init_service_1.OutboxInitService,
             outbox_telemetry_service_1.OutboxTelemetryService,
             outbox_interceptor_1.OutboxInterceptor,
             telemetry_interceptor_1.TelemetryInterceptor,
@@ -98,6 +102,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
                 outbox_db_service_1.OutboxDbService,
                 outbox_producer_service_1.OutboxProducerService,
                 outbox_migration_service_1.OutboxMigrationService,
+                outbox_init_service_1.OutboxInitService,
                 outbox_telemetry_service_1.OutboxTelemetryService,
                 outbox_interceptor_1.OutboxInterceptor,
                 telemetry_interceptor_1.TelemetryInterceptor,

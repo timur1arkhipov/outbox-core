@@ -4,6 +4,7 @@ import { OutboxService } from './services/outbox.service';
 import { OutboxDbService } from './services/outbox.db.service';
 import { OutboxProducerService } from './services/outbox-producer.service';
 import { OutboxMigrationService } from './services/outbox-migration.service';
+import { OutboxInitService } from './services/outbox-init.service';
 import { OutboxInterceptor } from './interceptors/outbox.interceptor';
 import { OutboxTelemetryService } from './services/outbox-telemetry.service';
 import { TelemetryInterceptor } from './interceptors/telemetry.interceptor';
@@ -35,6 +36,7 @@ export class OutboxModule {
       OutboxProducerService,
       OutboxService,
       OutboxMigrationService,
+      OutboxInitService,
       OutboxTelemetryService,
       OutboxInterceptor,
       TelemetryInterceptor,
@@ -66,6 +68,7 @@ export class OutboxModule {
         OutboxDbService,
         OutboxProducerService,
         OutboxMigrationService,
+        OutboxInitService,
         OutboxTelemetryService,
         OutboxInterceptor,
         TelemetryInterceptor,
@@ -89,6 +92,7 @@ export class OutboxModule {
       OutboxProducerService,
       OutboxService,
       OutboxMigrationService,
+      OutboxInitService,
       OutboxTelemetryService,
       OutboxInterceptor,
       TelemetryInterceptor,
@@ -107,6 +111,7 @@ export class OutboxModule {
         OutboxDbService,
         OutboxProducerService,
         OutboxMigrationService,
+        OutboxInitService,
         OutboxTelemetryService,
         OutboxInterceptor,
         TelemetryInterceptor,
