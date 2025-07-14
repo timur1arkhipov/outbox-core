@@ -4,26 +4,15 @@ export { OutboxDbService } from './services/outbox.db.service';
 export { OutboxProducerService } from './services/outbox-producer.service';
 export { OutboxMigrationService } from './services/outbox-migration.service';
 export { OutboxInitService } from './services/outbox-init.service';
-export { OutboxTelemetryService } from './services/outbox-telemetry.service';
 export { OutboxInterceptor } from './interceptors/outbox.interceptor';
-export { TelemetryInterceptor } from './interceptors/telemetry.interceptor';
 
 export { OutboxEvent } from './decorators/outbox-event.decorator';
-export { 
-  WithTrace, 
-  OutboxOperation
-} from './decorators/telemetry.decorator';
-
-export type {
-  TraceConfig
-} from './decorators/telemetry.decorator';
 
 export type {
   OutboxConfig,
   DatabaseConfig,
   KafkaConfig,
   ProcessingConfig,
-  TelemetryConfig,
 } from './interfaces/outbox-config.interface';
 export type {
   OutboxEventData,

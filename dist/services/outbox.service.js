@@ -14,22 +14,16 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OutboxService = void 0;
 const common_1 = require("@nestjs/common");
-const sequelize_1 = require("sequelize");
 const outbox_db_service_1 = require("./outbox.db.service");
-const outbox_event_filters_dto_1 = require("../dto/outbox-event-filters.dto");
 const outbox_event_dto_1 = require("../dto/outbox-event.dto");
-const update_outbox_event_dto_1 = require("../dto/update-outbox-event.dto");
 const outbox_producer_service_1 = require("./outbox-producer.service");
-const outbox_telemetry_service_1 = require("./outbox-telemetry.service");
 const result_type_1 = require("../types/result.type");
 const constants_1 = require("../constants");
-const telemetry_decorator_1 = require("../decorators/telemetry.decorator");
 let OutboxService = class OutboxService {
-    constructor(dbService, kafkaProducer, config, telemetryService) {
+    constructor(dbService, kafkaProducer, config) {
         this.dbService = dbService;
         this.kafkaProducer = kafkaProducer;
         this.config = config;
-        this.telemetryService = telemetryService;
         this.DEFAULT_CHUNK_SIZE = 100;
         this.MAX_RETRIES = 3;
         this.RETRY_DELAY_MS = 1000;
@@ -43,7 +37,7 @@ let OutboxService = class OutboxService {
                 _error: outboxEvents._error,
             };
         }
-        return outboxEvents;
+        return { data: outboxEvents.data, _error: null };
     }
     async selectBeforeOutboxEventsInfomodels(entity_uuids, transaction) {
         const outboxEvents = await this.dbService.selectBeforeOutboxEventsInfomodels(entity_uuids, transaction);
@@ -53,36 +47,14 @@ let OutboxService = class OutboxService {
                 _error: outboxEvents._error,
             };
         }
-        return outboxEvents;
+        return { data: outboxEvents.data, _error: null };
     }
     async updateOutboxEvents(uuid, data, transaction) {
-        const actualOutboxEventModels = await this.receiveOutboxEventInfomodels({ uuid }, transaction);
-        if (actualOutboxEventModels._error) {
+        const { _error } = await this.dbService.updateOutboxEvent(uuid, data, transaction);
+        if (_error) {
             return {
                 data: null,
-                _error: actualOutboxEventModels._error,
-            };
-        }
-        if (!actualOutboxEventModels.data?.length) {
-            return {
-                data: null,
-                _error: new result_type_1.OutboxError(400, result_type_1.OutboxErrorCode.VALIDATION_ERROR, 'Нет событий для обновления'),
-            };
-        }
-        const statusCheckError = this.checkStatus(actualOutboxEventModels.data, [
-            outbox_event_dto_1.OutboxEventStatusEnum.SENT,
-        ]);
-        if (statusCheckError) {
-            return {
-                data: null,
-                _error: statusCheckError,
-            };
-        }
-        const updatedOutboxEvents = await this.dbService.updateOutboxEvent(uuid, data, transaction);
-        if (updatedOutboxEvents._error) {
-            return {
-                data: null,
-                _error: updatedOutboxEvents._error,
+                _error,
             };
         }
         return { data: null, _error: null };
@@ -90,24 +62,14 @@ let OutboxService = class OutboxService {
     async produceMessage(payload) {
         try {
             const topic = this.config.kafka?.topic || 'outbox-events';
-            const startTime = Date.now();
             await this.kafkaProducer.send({
                 topic,
                 messages: payload.map((msg) => {
                     return { value: JSON.stringify(msg), key: msg.uuid };
                 }),
             });
-            if (this.telemetryService) {
-                const duration = Date.now() - startTime;
-                this.telemetryService.recordKafkaSendDuration(duration, topic, payload.length);
-                this.telemetryService.recordKafkaMessage(topic, true);
-            }
         }
         catch (error) {
-            if (this.telemetryService) {
-                const topic = this.config.kafka?.topic || 'outbox-events';
-                this.telemetryService.recordKafkaMessage(topic, false);
-            }
             return {
                 data: null,
                 _error: new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.KAFKA_ERROR, 'Ошибка при отправке сообщений в Kafka', error instanceof Error ? error.stack : undefined, error),
@@ -308,49 +270,10 @@ let OutboxService = class OutboxService {
     }
 };
 exports.OutboxService = OutboxService;
-__decorate([
-    (0, telemetry_decorator_1.WithTrace)('outbox.receive_events', { operation: 'query' }),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [outbox_event_filters_dto_1.OutboxEventFiltersDto,
-        sequelize_1.Transaction]),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "receiveOutboxEventInfomodels", null);
-__decorate([
-    (0, telemetry_decorator_1.WithTrace)('outbox.select_before_events'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Array, sequelize_1.Transaction]),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "selectBeforeOutboxEventsInfomodels", null);
-__decorate([
-    (0, telemetry_decorator_1.WithTrace)('outbox.update_events', { operation: 'update' }),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Array, update_outbox_event_dto_1.UpdateOutboxEventDto,
-        sequelize_1.Transaction]),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "updateOutboxEvents", null);
-__decorate([
-    (0, telemetry_decorator_1.OutboxOperation)('produce_message'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Array]),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "produceMessage", null);
-__decorate([
-    (0, telemetry_decorator_1.OutboxOperation)('send_chunks'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number]),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "sendOutboxEventsInChunks", null);
-__decorate([
-    (0, telemetry_decorator_1.OutboxOperation)('cleanup_stuck_events'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
-    __metadata("design:returntype", Object)
-], OutboxService.prototype, "cleanupStuckEvents", null);
 exports.OutboxService = OutboxService = __decorate([
     (0, common_1.Injectable)(),
     __param(2, (0, common_1.Inject)(constants_1.OUTBOX_CONFIG)),
-    __param(3, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [outbox_db_service_1.OutboxDbService,
-        outbox_producer_service_1.OutboxProducerService, Object, outbox_telemetry_service_1.OutboxTelemetryService])
+        outbox_producer_service_1.OutboxProducerService, Object])
 ], OutboxService);
 //# sourceMappingURL=outbox.service.js.map

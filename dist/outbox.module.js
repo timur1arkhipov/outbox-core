@@ -16,8 +16,6 @@ const outbox_producer_service_1 = require("./services/outbox-producer.service");
 const outbox_migration_service_1 = require("./services/outbox-migration.service");
 const outbox_init_service_1 = require("./services/outbox-init.service");
 const outbox_interceptor_1 = require("./interceptors/outbox.interceptor");
-const outbox_telemetry_service_1 = require("./services/outbox-telemetry.service");
-const telemetry_interceptor_1 = require("./interceptors/telemetry.interceptor");
 const constants_1 = require("./constants");
 let OutboxModule = OutboxModule_1 = class OutboxModule {
     static forRoot(config) {
@@ -33,9 +31,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             outbox_service_1.OutboxService,
             outbox_migration_service_1.OutboxMigrationService,
             outbox_init_service_1.OutboxInitService,
-            outbox_telemetry_service_1.OutboxTelemetryService,
             outbox_interceptor_1.OutboxInterceptor,
-            telemetry_interceptor_1.TelemetryInterceptor,
             {
                 provide: core_1.APP_INTERCEPTOR,
                 useClass: outbox_interceptor_1.OutboxInterceptor,
@@ -62,9 +58,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
                 outbox_producer_service_1.OutboxProducerService,
                 outbox_migration_service_1.OutboxMigrationService,
                 outbox_init_service_1.OutboxInitService,
-                outbox_telemetry_service_1.OutboxTelemetryService,
                 outbox_interceptor_1.OutboxInterceptor,
-                telemetry_interceptor_1.TelemetryInterceptor,
                 constants_1.OUTBOX_CONFIG,
             ],
         };
@@ -85,9 +79,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             outbox_service_1.OutboxService,
             outbox_migration_service_1.OutboxMigrationService,
             outbox_init_service_1.OutboxInitService,
-            outbox_telemetry_service_1.OutboxTelemetryService,
             outbox_interceptor_1.OutboxInterceptor,
-            telemetry_interceptor_1.TelemetryInterceptor,
             {
                 provide: core_1.APP_INTERCEPTOR,
                 useClass: outbox_interceptor_1.OutboxInterceptor,
@@ -103,9 +95,7 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
                 outbox_producer_service_1.OutboxProducerService,
                 outbox_migration_service_1.OutboxMigrationService,
                 outbox_init_service_1.OutboxInitService,
-                outbox_telemetry_service_1.OutboxTelemetryService,
                 outbox_interceptor_1.OutboxInterceptor,
-                telemetry_interceptor_1.TelemetryInterceptor,
                 constants_1.OUTBOX_CONFIG,
             ],
         };
@@ -115,10 +105,6 @@ let OutboxModule = OutboxModule_1 = class OutboxModule {
             processing: {
                 ...constants_1.DEFAULT_OUTBOX_CONFIG.processing,
                 ...config.processing,
-            },
-            telemetry: {
-                ...constants_1.DEFAULT_OUTBOX_CONFIG.telemetry,
-                ...config.telemetry,
             },
         };
         if (config.sequelizeToken) {

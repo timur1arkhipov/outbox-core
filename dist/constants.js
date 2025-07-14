@@ -25,13 +25,5 @@ exports.DEFAULT_OUTBOX_CONFIG = {
         retryDelayMs: 1000,
         processingTimeoutMinutes: 5,
     },
-    telemetry: {
-        enabled: true,
-        serviceName: '@rolfcorp/nestjs-outbox',
-        serviceVersion: '1.0.0',
-        enableDefaultMetrics: true,
-        enableTracing: true,
-        enableMetrics: true,
-    },
 };
 //# sourceMappingURL=constants.js.map

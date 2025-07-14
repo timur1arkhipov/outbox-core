@@ -187,23 +187,6 @@ export class OutboxProcessor {
 }
 ```
 
-## Настройка телеметрии (опционально)
-
-```bash
-npm install @opentelemetry/api
-```
-
-```typescript
-OutboxModule.forRoot({
-  // ... другие настройки
-  telemetry: {
-    enabled: true,
-    serviceName: 'your-service',
-    serviceVersion: '1.0.0'
-  }
-})
-```
-
 ## Лицензия
 
 MIT 

@@ -1,11 +1,10 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { Transaction } from 'sequelize';
 import { OutboxDbService } from './outbox.db.service';
 import { OutboxEventFiltersDto } from '../dto/outbox-event-filters.dto';
 import { OutboxEventDto, OutboxEventStatusEnum } from '../dto/outbox-event.dto';
 import { UpdateOutboxEventDto } from '../dto/update-outbox-event.dto';
 import { OutboxProducerService } from './outbox-producer.service';
-import { OutboxTelemetryService } from './outbox-telemetry.service';
 import {
   OutboxEventMsgDto,
   OutboxEventMsgPayload,
@@ -19,7 +18,6 @@ import {
 } from '../types/result.type';
 import { OUTBOX_CONFIG } from '../constants';
 import { OutboxConfig } from '../interfaces/outbox-config.interface';
-import { OutboxOperation, WithTrace } from '../decorators/telemetry.decorator';
 
 @Injectable()
 export class OutboxService {
@@ -32,10 +30,8 @@ export class OutboxService {
     private readonly dbService: OutboxDbService,
     private readonly kafkaProducer: OutboxProducerService,
     @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
-    @Optional() private readonly telemetryService?: OutboxTelemetryService,
   ) {}
 
-  @WithTrace('outbox.receive_events', { operation: 'query' })
   public async receiveOutboxEventInfomodels(
     filters: OutboxEventFiltersDto,
     transaction?: Transaction,
@@ -52,19 +48,17 @@ export class OutboxService {
       };
     }
 
-    return outboxEvents;
+    return { data: outboxEvents.data, _error: null };
   }
 
-  @WithTrace('outbox.select_before_events')
   public async selectBeforeOutboxEventsInfomodels(
     entity_uuids: string[],
     transaction?: Transaction,
   ): PromiseWithError<OutboxEventDto[]> {
-    const outboxEvents =
-      await this.dbService.selectBeforeOutboxEventsInfomodels(
-        entity_uuids,
-        transaction,
-      );
+    const outboxEvents = await this.dbService.selectBeforeOutboxEventsInfomodels(
+      entity_uuids,
+      transaction,
+    );
 
     if (outboxEvents._error) {
       return {
@@ -73,70 +67,35 @@ export class OutboxService {
       };
     }
 
-    return outboxEvents;
+    return { data: outboxEvents.data, _error: null };
   }
 
-  @WithTrace('outbox.update_events', { operation: 'update' })
   public async updateOutboxEvents(
     uuid: string[],
     data: UpdateOutboxEventDto,
     transaction?: Transaction,
   ): PromiseWithError<void> {
-    const actualOutboxEventModels = await this.receiveOutboxEventInfomodels(
-      { uuid },
-      transaction,
-    );
-
-    if (actualOutboxEventModels._error) {
-      return {
-        data: null,
-        _error: actualOutboxEventModels._error,
-      };
-    }
-
-    if (!actualOutboxEventModels.data?.length) {
-      return {
-        data: null,
-        _error: new OutboxError(
-          400,
-          OutboxErrorCode.VALIDATION_ERROR,
-          'Нет событий для обновления',
-        ),
-      };
-    }
-
-    const statusCheckError = this.checkStatus(actualOutboxEventModels.data, [
-      OutboxEventStatusEnum.SENT,
-    ]);
-    if (statusCheckError) {
-      return {
-        data: null,
-        _error: statusCheckError,
-      };
-    }
-
-    const updatedOutboxEvents = await this.dbService.updateOutboxEvent(
+    const { _error } = await this.dbService.updateOutboxEvent(
       uuid,
       data,
       transaction,
     );
-    if (updatedOutboxEvents._error) {
+
+    if (_error) {
       return {
         data: null,
-        _error: updatedOutboxEvents._error,
+        _error,
       };
     }
 
     return { data: null, _error: null };
   }
 
-  @OutboxOperation('produce_message')
   public async produceMessage(
     payload: OutboxEventMsgDto[],
   ): PromiseWithError<void> {
     try {
       const topic = this.config.kafka?.topic || 'outbox-events';
-      const startTime = Date.now();
       
       await this.kafkaProducer.send({
         topic,
@@ -145,17 +104,7 @@ export class OutboxService {
         }),
       });
 
-      if (this.telemetryService) {
-        const duration = Date.now() - startTime;
-        this.telemetryService.recordKafkaSendDuration(duration, topic, payload.length);
-        this.telemetryService.recordKafkaMessage(topic, true);
-      }
     } catch (error) {
-      if (this.telemetryService) {
-        const topic = this.config.kafka?.topic || 'outbox-events';
-        this.telemetryService.recordKafkaMessage(topic, false);
-      }
-
       return {
         data: null,
         _error: new OutboxError(
@@ -191,7 +140,6 @@ export class OutboxService {
     return null;
   }
 
-  @OutboxOperation('send_chunks')
   public async sendOutboxEventsInChunks(
     chunkSize?: number,
   ): PromiseWithError<ChunkProcessingDto> {
@@ -444,7 +392,6 @@ export class OutboxService {
     return { data: updatedEvents, _error: null };
   }
 
-  @OutboxOperation('cleanup_stuck_events')
   public async cleanupStuckEvents(): PromiseWithError<CleanupResultDto> {
     const result = await this.dbService.cleanupStuckEvents(
       this.PROCESSING_TIMEOUT_MINUTES,

@@ -33,19 +33,10 @@ export interface ProcessingConfig {
     retryDelayMs: number;
     processingTimeoutMinutes: number;
 }
-export interface TelemetryConfig {
-    enabled?: boolean;
-    serviceName?: string;
-    serviceVersion?: string;
-    enableDefaultMetrics?: boolean;
-    enableTracing?: boolean;
-    enableMetrics?: boolean;
-}
 export interface OutboxConfig {
     database?: DatabaseConfig;
     kafka?: KafkaConfig;
     processing: ProcessingConfig;
-    telemetry?: TelemetryConfig;
     sequelizeToken?: string | symbol;
     kafkaProducerToken?: string | symbol;
 }

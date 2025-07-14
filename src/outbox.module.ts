@@ -6,8 +6,6 @@ import { OutboxProducerService } from './services/outbox-producer.service';
 import { OutboxMigrationService } from './services/outbox-migration.service';
 import { OutboxInitService } from './services/outbox-init.service';
 import { OutboxInterceptor } from './interceptors/outbox.interceptor';
-import { OutboxTelemetryService } from './services/outbox-telemetry.service';
-import { TelemetryInterceptor } from './interceptors/telemetry.interceptor';
 import {
   OutboxConfig,
   DatabaseConfig,
@@ -37,9 +35,7 @@ export class OutboxModule {
       OutboxService,
       OutboxMigrationService,
       OutboxInitService,
-      OutboxTelemetryService,
       OutboxInterceptor,
-      TelemetryInterceptor,
       {
         provide: APP_INTERCEPTOR,
         useClass: OutboxInterceptor,
@@ -69,9 +65,7 @@ export class OutboxModule {
         OutboxProducerService,
         OutboxMigrationService,
         OutboxInitService,
-        OutboxTelemetryService,
         OutboxInterceptor,
-        TelemetryInterceptor,
         OUTBOX_CONFIG,
       ],
     };
@@ -93,9 +87,7 @@ export class OutboxModule {
       OutboxService,
       OutboxMigrationService,
       OutboxInitService,
-      OutboxTelemetryService,
       OutboxInterceptor,
-      TelemetryInterceptor,
       {
         provide: APP_INTERCEPTOR,
         useClass: OutboxInterceptor,
@@ -112,9 +104,7 @@ export class OutboxModule {
         OutboxProducerService,
         OutboxMigrationService,
         OutboxInitService,
-        OutboxTelemetryService,
         OutboxInterceptor,
-        TelemetryInterceptor,
         OUTBOX_CONFIG,
       ],
     };
@@ -127,10 +117,6 @@ export class OutboxModule {
       processing: {
         ...DEFAULT_OUTBOX_CONFIG.processing,
         ...config.processing,
-      },
-      telemetry: {
-        ...DEFAULT_OUTBOX_CONFIG.telemetry,
-        ...config.telemetry,
       },
     };
 

@@ -23,7 +23,6 @@ const sequelize_2 = require("sequelize");
 const result_type_1 = require("../types/result.type");
 const outbox_event_decorator_1 = require("../decorators/outbox-event.decorator");
 const constants_1 = require("../constants");
-const outbox_telemetry_service_1 = require("../services/outbox-telemetry.service");
 const SQL_INSERT_OUTBOX_EVENT = `
 INSERT INTO :schema.:table (
   entity_uuid,
@@ -36,10 +35,9 @@ INSERT INTO :schema.:table (
 ) VALUES
 `;
 let OutboxInterceptor = class OutboxInterceptor {
-    constructor(defaultSequelize, externalSequelize, reflector, config, telemetryService) {
+    constructor(defaultSequelize, externalSequelize, reflector, config) {
         this.reflector = reflector;
         this.config = config;
-        this.telemetryService = telemetryService;
         this.sequelize = externalSequelize || defaultSequelize;
         if (!this.sequelize) {
             throw new Error('No Sequelize connection provided.');
@@ -49,9 +47,9 @@ let OutboxInterceptor = class OutboxInterceptor {
         };
     }
     replaceTablePlaceholders(sql) {
-        const schema = this.config.database?.schema || 'public';
-        const tableName = this.config.database?.tableName || 'outbox_events';
-        return sql.replace(/:schema/g, schema).replace(/:table/g, tableName);
+        return sql
+            .replace(':schema', this.config.database?.schema || 'public')
+            .replace(':table', this.config.database?.tableName || 'outbox_events');
     }
     async intercept(context, next) {
         const eventType = this.reflector.getAllAndOverride(outbox_event_decorator_1.OUTBOX_EVENT_TYPE_KEY, [
@@ -74,40 +72,35 @@ let OutboxInterceptor = class OutboxInterceptor {
                 if (transaction.finished) {
                     transaction = undefined;
                 }
-                for (const item of data) {
-                    if (!item.uuid) {
-                        throw new result_type_1.OutboxError(400, result_type_1.OutboxErrorCode.VALIDATION_ERROR, 'Outbox event requires uuid field in returned data object');
-                    }
+            }
+            for (const item of data) {
+                if (!item.uuid) {
+                    throw new result_type_1.OutboxError(400, result_type_1.OutboxErrorCode.VALIDATION_ERROR, 'Outbox event requires uuid field in returned data object');
                 }
-                const outboxEventValues = [];
-                const baseTime = Date.now();
-                data.forEach((item, index) => {
-                    const eventDate = new Date(baseTime + index);
-                    outboxEventValues.push(item.uuid, entityType, eventDate.toISOString(), user.username, outbox_event_dto_1.OutboxEventStatusEnum.READY_TO_SEND, eventType, JSON.stringify(item));
+            }
+            const outboxEventValues = [];
+            const baseTime = Date.now();
+            data.forEach((item, index) => {
+                const eventDate = new Date(baseTime + index);
+                outboxEventValues.push(item.uuid, entityType, eventDate.toISOString(), user.username, outbox_event_dto_1.OutboxEventStatusEnum.READY_TO_SEND, eventType, JSON.stringify(item));
+            });
+            const valuesPerRow = 7;
+            const valuesClauses = data.map((_, index) => {
+                const startIndex = index * valuesPerRow + 1;
+                const placeholders = Array.from({ length: valuesPerRow }, (_, i) => `$${startIndex + i}`).join(', ');
+                return `(${placeholders})`;
+            }).join(', ');
+            const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
+            try {
+                await this.sequelize.query(fullSql, {
+                    bind: outboxEventValues,
+                    transaction,
+                    type: sequelize_2.QueryTypes.INSERT,
                 });
-                const valuesPerRow = 7;
-                const valuesClauses = data.map((_, index) => {
-                    const startIndex = index * valuesPerRow + 1;
-                    const placeholders = Array.from({ length: valuesPerRow }, (_, i) => `$${startIndex + i}`).join(', ');
-                    return `(${placeholders})`;
-                }).join(', ');
-                const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
-                try {
-                    await this.sequelize.query(fullSql, {
-                        bind: outboxEventValues,
-                        transaction,
-                        type: sequelize_2.QueryTypes.INSERT,
-                    });
-                    if (this.telemetryService) {
-                        data.forEach(() => {
-                            this.telemetryService.recordEventCreated(entityType, eventType);
-                        });
-                    }
-                }
-                catch (pgError) {
-                    const error = new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.DATABASE_ERROR, 'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox', pgError instanceof Error ? pgError.stack : undefined, pgError);
-                    error.throwAsHttpException('Global.OutboxInterceptor');
-                }
+            }
+            catch (pgError) {
+                const error = new result_type_1.OutboxError(500, result_type_1.OutboxErrorCode.DATABASE_ERROR, 'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox', pgError instanceof Error ? pgError.stack : undefined, pgError);
+                error.throwAsHttpException('Global.OutboxInterceptor');
             }
             return res;
         }));
@@ -121,9 +114,8 @@ exports.OutboxInterceptor = OutboxInterceptor = __decorate([
     __param(1, (0, common_1.Optional)()),
     __param(1, (0, common_1.Inject)(constants_1.EXTERNAL_SEQUELIZE_TOKEN)),
     __param(3, (0, common_1.Inject)(constants_1.OUTBOX_CONFIG)),
-    __param(4, (0, common_1.Optional)()),
     __metadata("design:paramtypes", [sequelize_typescript_1.Sequelize,
         sequelize_typescript_1.Sequelize,
-        core_1.Reflector, Object, outbox_telemetry_service_1.OutboxTelemetryService])
+        core_1.Reflector, Object])
 ], OutboxInterceptor);
 //# sourceMappingURL=outbox.interceptor.js.map

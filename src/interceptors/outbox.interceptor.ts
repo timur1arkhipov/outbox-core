@@ -19,7 +19,6 @@ import {
 } from '../decorators/outbox-event.decorator';
 import { OUTBOX_CONFIG, EXTERNAL_SEQUELIZE_TOKEN } from '../constants';
 import { OutboxConfig } from '../interfaces/outbox-config.interface';
-import { OutboxTelemetryService } from '../services/outbox-telemetry.service';
 
 const SQL_INSERT_OUTBOX_EVENT = `
 INSERT INTO :schema.:table (
@@ -50,7 +49,6 @@ export class OutboxInterceptor implements NestInterceptor {
     @Optional() @Inject(EXTERNAL_SEQUELIZE_TOKEN) externalSequelize: Sequelize,
     private readonly reflector: Reflector,
     @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
-    @Optional() private readonly telemetryService?: OutboxTelemetryService,
   ) {
     this.sequelize = externalSequelize || defaultSequelize;
 
@@ -60,13 +58,13 @@ export class OutboxInterceptor implements NestInterceptor {
 
     this.sql = {
       insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
-    } as const;
+    };
   }
 
   private replaceTablePlaceholders(sql: string): string {
-    const schema = this.config.database?.schema || 'public';
-    const tableName = this.config.database?.tableName || 'outbox_events';
-    return sql.replace(/:schema/g, schema).replace(/:table/g, tableName);
+    return sql
+      .replace(':schema', this.config.database?.schema || 'public')
+      .replace(':table', this.config.database?.tableName || 'outbox_events');
   }
 
   async intercept(
@@ -102,6 +100,7 @@ export class OutboxInterceptor implements NestInterceptor {
           if (transaction.finished) {
             transaction = undefined;
           }
+        }
 
         for (const item of data) {
           if (!item.uuid) {
@@ -149,11 +148,6 @@ export class OutboxInterceptor implements NestInterceptor {
             type: QueryTypes.INSERT,
           });
 
-          if (this.telemetryService) {
-            data.forEach(() => {
-              this.telemetryService!.recordEventCreated(entityType, eventType);
-            });
-          }
         } catch (pgError) {
           const error = new OutboxError(
             500,
@@ -163,7 +157,6 @@ export class OutboxInterceptor implements NestInterceptor {
             pgError,
           );
           error.throwAsHttpException('Global.OutboxInterceptor');
-          }
         }
         return res;
       }),
