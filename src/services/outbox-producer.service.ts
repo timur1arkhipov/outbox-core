@@ -4,16 +4,19 @@ import {
   OnModuleInit,
   OnModuleDestroy,
   Optional,
+  HttpStatus,
 } from '@nestjs/common';
-import { Kafka, Producer, Message } from 'kafkajs';
+import { Kafka, Message } from 'kafkajs';
+import type { Producer } from 'kafkajs';
 import { OUTBOX_CONFIG, EXTERNAL_KAFKA_PRODUCER_TOKEN } from '../constants';
-import { OutboxConfig } from '../interfaces/outbox-config.interface';
+import type { OutboxConfig } from '../interfaces/outbox-config.interface';
 import { OutboxError, OutboxErrorCode } from '../types/result.type';
+import { Transaction } from 'sequelize';
 
 export interface KafkaSendOptions {
   topic: string;
   messages: Message[];
-  transaction?: any;
+  transaction?: Transaction;
 }
 
 @Injectable()
@@ -50,7 +53,7 @@ export class OutboxProducerService implements OnModuleInit, OnModuleDestroy {
       this.kafka = new Kafka(kafkaConfig);
       this.producer = this.kafka.producer();
     } else {
-      throw new Error('No Kafka configuration or external producer provided. Either provide kafkaProducerToken or complete kafka config with brokers and clientId.');
+      throw new Error('No Kafka configuration or external producer provided.');
     }
   }
 
@@ -78,7 +81,7 @@ export class OutboxProducerService implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error) {
       throw new OutboxError(
-        500,
+        HttpStatus.INTERNAL_SERVER_ERROR,
         OutboxErrorCode.KAFKA_ERROR,
         'Ошибка при отправке сообщений в Kafka',
         error instanceof Error ? error.stack : undefined,

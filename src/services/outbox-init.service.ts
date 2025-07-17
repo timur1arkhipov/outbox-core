@@ -12,15 +12,13 @@ export class OutboxInitService implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      this.logger.log('🔄 Инициализация Outbox таблицы...');
+      this.logger.log('Initializing Outbox table...');
       
-      await this.outboxMigration.createTableIfNotExists();
+      await this.outboxMigration.createOutboxTable();
       
-      await this.outboxMigration.addEntityTypeColumnIfNotExists();
-      
-      this.logger.log('Outbox таблица успешно инициализирована');
+      this.logger.log('Outbox table successfully initialized');
     } catch (error) {
-      this.logger.error('Ошибка инициализации Outbox таблицы:', error);
+      this.logger.error('Error initializing Outbox table:', error);
     }
   }
 } 

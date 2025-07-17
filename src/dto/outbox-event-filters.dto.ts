@@ -16,7 +16,15 @@ export class EntityLinkDto {
   @IsUUID(4, {
     message: 'Идентификатор сущности должен быть валидным UUID',
   })
-  uuid!: string;
+  @ApiProperty({
+    title: 'UUID сущности',
+    description: 'Уникальный идентификатор сущности (UUID_v4)',
+    type: 'string',
+    format: 'uuid',
+    nullable: false,
+    deprecated: false,
+  })
+  uuid: string;
 }
 
 @ApiSchema({
@@ -115,11 +123,22 @@ export class OutboxEventFiltersDto {
     required: false,
   })
   with_lock?: boolean;
+
+  @IsOptional()
+  @ApiProperty({
+    title: 'Лимит выборки',
+    description: 'Максимальное количество событий для выборки (чанк)',
+    type: 'integer',
+    nullable: true,
+    required: false,
+    example: 100,
+  })
+  limit?: number;
 }
 
 export class OutboxEventFiltersBodyDto {
   @IsDefined()
   @ValidateNested()
   @Type(() => OutboxEventFiltersDto)
-  data!: OutboxEventFiltersDto;
+  data: OutboxEventFiltersDto;
 }

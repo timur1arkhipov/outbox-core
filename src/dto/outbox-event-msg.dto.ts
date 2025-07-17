@@ -24,7 +24,7 @@ export class OutboxEventMsgPayload {
     nullable: true,
     deprecated: false,
   })
-  before!: AgreementDto | null;
+  before: AgreementDto | null;
 
   @IsDefined({
     message: 'Не указан after события',
@@ -38,7 +38,7 @@ export class OutboxEventMsgPayload {
     nullable: false,
     deprecated: false,
   })
-  after!: AgreementDto;
+  after: AgreementDto;
 }
 
 @ApiSchema({
@@ -62,7 +62,5 @@ export class OutboxEventMsgDto extends OmitType(OutboxEventDto, [
     nullable: false,
     deprecated: false,
   })
-  payload!: OutboxEventMsgPayload;
-
-  declare uuid: string;
+  payload: OutboxEventMsgPayload;
 }

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject, Optional, HttpStatus } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Transaction, QueryTypes } from 'sequelize';
@@ -12,82 +12,15 @@ import {
   OutboxErrorCode,
 } from '../types/result.type';
 import { OUTBOX_CONFIG, EXTERNAL_SEQUELIZE_TOKEN } from '../constants';
-import { OutboxConfig } from '../interfaces/outbox-config.interface';
-
-const SQL_UPDATE_OUTBOX_EVENT = `
-UPDATE :schema.:table
-SET
-  retry_count = CASE
-    WHEN (:status = 'ERROR') THEN COALESCE(retry_count, 0) + 1
-    ELSE retry_count
-  END,
-  status = :status
-WHERE event_s_uuid IN (:event_uuids);
-`;
-
-const SQL_SELECT_OUTBOX_EVENTS = `
-SELECT 
-	ev.event_s_uuid,
-	ev.entity_uuid,
-	ev.entity_type,
-	ev.event_date as created_at,
-	ev.user_d_login as created_by,
-	ev.status,
-	ev.event_type,
-	ev.payload_as_json,
-	ev.retry_count
-FROM :schema.:table ev
-WHERE
-  ((:event_uuids) IS NULL OR ev.event_s_uuid IN (:event_uuids))
-	AND
-	((:entity_uuids) IS NULL OR ev.entity_uuid IN (:entity_uuids))
-	AND
-	((:entity_types) IS NULL OR ev.entity_type IN (:entity_types))
-	AND
-	((:status) IS NULL OR ev.status IN (:status))
-	AND
-	((:with_lock) IS NULL OR (:with_lock) = false OR ev.status IN ('READY_TO_SEND', 'ERROR'))
-ORDER BY ev.event_date ASC
-FOR UPDATE SKIP LOCKED;
-`;
-
-const SQL_SELECT_BEFORE_OUTBOX_EVENTS = `
-SELECT m.* FROM 
-  (
-		SELECT 
-			entity_uuid, 
-			MAX(event_date) AS max_created_at
-		FROM :schema.:table
-		WHERE 
-			status IN ('SENT', 'ERROR')
-			AND 
-			entity_uuid IN (:entity_uuids)
-		GROUP BY entity_uuid
-	) t JOIN :schema.:table m 
-		ON t.entity_uuid = m.entity_uuid
-		AND t.max_created_at = m.event_date
-	ORDER BY event_date DESC;
-`;
-
-const SQL_CLEANUP_STUCK_EVENTS_READY_TO_SEND = `
-UPDATE :schema.:table
-SET 
-  status = 'READY_TO_SEND',
-  retry_count = COALESCE(retry_count, 0) + 1
-WHERE 
-  status = 'PROCESSING' 
-  AND event_date < NOW() - (:timeout_minutes || ' minutes')::INTERVAL
-  AND retry_count < :max_retries;
-`;
-
-const SQL_CLEANUP_STUCK_EVENTS_ERROR = `
-UPDATE :schema.:table
-SET status = 'ERROR'
-WHERE 
-  status = 'PROCESSING' 
-  AND event_date < NOW() - (:timeout_minutes || ' minutes')::INTERVAL
-  AND retry_count >= :max_retries;
-`;
+import type { OutboxConfig } from '../interfaces/outbox-config.interface';
+import {
+  sql_updateOutboxEvent,
+  sql_selectOutboxEvents,
+  sql_selectBeforeOutboxEvents,
+  sql_cleanupStuckEventsReadyToSend,
+  sql_cleanupStuckEventsError,
+} from '../sql';
+import { replaceTablePlaceholders } from '../utils/sql.utils';
 
 @Injectable()
 export class OutboxDbService {
@@ -103,31 +36,39 @@ export class OutboxDbService {
 
     if (!this.sequelize) {
       throw new Error(
-        'No Sequelize connection provided. Either configure database settings or provide external connection token.',
+        'No Sequelize connection provided.',
       );
     }
     this.sql = {
-      updateOutboxEvent: this.replaceTablePlaceholders(SQL_UPDATE_OUTBOX_EVENT),
-      selectOutboxEvents: this.replaceTablePlaceholders(
-        SQL_SELECT_OUTBOX_EVENTS,
+      updateOutboxEvent: replaceTablePlaceholders(
+        sql_updateOutboxEvent,
+        this.config.database.schema,
+        this.config.database.tableName,
       ),
-      selectBeforeOutboxEvents: this.replaceTablePlaceholders(
-        SQL_SELECT_BEFORE_OUTBOX_EVENTS,
+      selectOutboxEvents: replaceTablePlaceholders(
+        sql_selectOutboxEvents,
+        this.config.database.schema,
+        this.config.database.tableName,
       ),
-      cleanupStuckEventsReadyToSend: this.replaceTablePlaceholders(
-        SQL_CLEANUP_STUCK_EVENTS_READY_TO_SEND,
+      selectBeforeOutboxEvents: replaceTablePlaceholders(
+        sql_selectBeforeOutboxEvents,
+        this.config.database.schema,
+        this.config.database.tableName,
       ),
-      cleanupStuckEventsError: this.replaceTablePlaceholders(
-        SQL_CLEANUP_STUCK_EVENTS_ERROR,
+      cleanupStuckEventsReadyToSend: replaceTablePlaceholders(
+        sql_cleanupStuckEventsReadyToSend,
+        this.config.database.schema,
+        this.config.database.tableName,
+      ),
+      cleanupStuckEventsError: replaceTablePlaceholders(
+        sql_cleanupStuckEventsError,
+        this.config.database.schema,
+        this.config.database.tableName,
       ),
     } as const;
   }
 
-  private replaceTablePlaceholders(sql: string): string {
-    const schema = this.config.database?.schema || 'public';
-    const tableName = this.config.database?.tableName || 'outbox_events';
-    return sql.replace(/:schema/g, schema).replace(/:table/g, tableName);
-  }
+
 
   public async updateOutboxEvent(
     uuids: string[],
@@ -152,7 +93,7 @@ export class OutboxDbService {
       return {
         data: null,
         _error: new OutboxError(
-          500,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           OutboxErrorCode.DATABASE_ERROR,
           'Ошибка при обновлении записи в Postgres: не удалось обновить запись о Событии outbox',
           pgError instanceof Error ? pgError.stack : undefined,
@@ -181,13 +122,14 @@ export class OutboxDbService {
             : null,
           status: filters.status?.length ? filters.status : null,
           with_lock: filters.with_lock ?? null,
+          limit: filters.limit ?? this.config.defaultProcessing.chunkSize,
         },
       });
     } catch (pgError) {
       return {
         data: null,
         _error: new OutboxError(
-          500,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           OutboxErrorCode.DATABASE_ERROR,
           'Ошибка при получении данных из Postgres: не удалось получить данные о Событии outbox',
           pgError instanceof Error ? pgError.stack : undefined,
@@ -219,7 +161,7 @@ export class OutboxDbService {
       return {
         data: null,
         _error: new OutboxError(
-          500,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           OutboxErrorCode.DATABASE_ERROR,
           'Ошибка при получении данных из Postgres: не удалось получить данные о Событии outbox',
           pgError instanceof Error ? pgError.stack : undefined,
@@ -277,7 +219,7 @@ export class OutboxDbService {
       return {
         data: null,
         _error: new OutboxError(
-          500,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           OutboxErrorCode.DATABASE_ERROR,
           'Ошибка при очистке зависших событий outbox в Postgres',
           pgError instanceof Error ? pgError.stack : undefined,

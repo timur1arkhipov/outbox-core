@@ -20,7 +20,7 @@ export class CleanupResultDto {
     nullable: false,
     deprecated: false,
   })
-  updatedToReady!: number;
+  updatedToReady: number;
 
   @IsInt({
     message: 'updatedToError должно быть целым числом',
@@ -37,5 +37,5 @@ export class CleanupResultDto {
     nullable: false,
     deprecated: false,
   })
-  updatedToError!: number;
+  updatedToError: number;
 }

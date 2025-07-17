@@ -16,13 +16,24 @@ export const DEFAULT_OUTBOX_CONFIG: OutboxConfig = {
   },
   kafka: {
     brokers: ['localhost:9092'],
-    topic: 'outbox-events',
     clientId: 'outbox-producer',
   },
-  processing: {
+  defaultProcessing: {
     chunkSize: 100,
     maxRetries: 3,
     retryDelayMs: 1000,
     processingTimeoutMinutes: 5,
   },
+  topics: {
+    'default': {
+      topicName: 'outbox-events',
+      entityTypes: ['default'],
+      processing: {
+        chunkSize: 100,
+        maxRetries: 3,
+        retryDelayMs: 1000,
+        processingTimeoutMinutes: 5,
+      }
+    }
+  }
 };

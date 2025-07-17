@@ -5,21 +5,36 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "README.md"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && tsc",
+    "copy-sql": "cp -r src/sql dist/ && cp -r src/sql dist/esm/",
+    "build": "npm run clean && npm run build:cjs && npm run build:esm && npm run copy-sql",
+    "build:cjs": "tsc",
+    "build:esm": "tsc -p tsconfig.esm.json",
     "build:watch": "tsc --watch",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "lint": "eslint \"src/**/*.ts\" --fix",
-    "check-dist": "ls -la dist/ && ls -la dist/services/ && ls -la dist/dto/",
-    "prepublishOnly": "npm run build"
+    "check-dist": "ls -la dist/ && ls -la dist/services/ && ls -la dist/dto/ && ls -la dist/sql/",
+    "prepublishOnly": "npm run build",
+    "prepack": "npm run build"
   },
   "author": "Timur Arkhipov",
+  "license": "MIT",
   "peerDependencies": {
+    "@rolfcorp/nestjs-auth": "^1.2.0",
     "@nestjs/common": "^11.1.1",
     "@nestjs/core": "^11.1.1",
     "@nestjs/config": "^4.0.2",

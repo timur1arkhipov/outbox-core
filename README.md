@@ -30,14 +30,33 @@ import { OutboxModule } from '@rolfcorp/nestjs-outbox';
       },
       kafka: {
         brokers: ['localhost:9092'],
-        topic: 'outbox-events',
         clientId: 'your-app-outbox'
       },
-      processing: {
+      defaultProcessing: {
         chunkSize: 100,
         maxRetries: 3,
         retryDelayMs: 1000,
         processingTimeoutMinutes: 5
+      },
+      topics: {
+        'agreements': {
+          topicName: 'agreements-events',
+          entityTypes: ['agreement', 'contract'],
+          processing: {
+            chunkSize: 50,
+            maxRetries: 5,
+            retryDelayMs: 2000,
+            processingTimeoutMinutes: 10
+          }
+        },
+        'users': {
+          topicName: 'users-events',
+          entityTypes: ['user', 'profile']
+        },
+        'orders': {
+          topicName: 'orders-events',
+          entityTypes: ['order', 'payment', 'delivery']
+        }
       }
     })
   ]
@@ -68,14 +87,50 @@ import { OutboxModule } from '@rolfcorp/nestjs-outbox';
         },
         kafka: {
           brokers: configService.get('KAFKA_BROKERS').split(','),
-          topic: configService.get('KAFKA_TOPIC'),
           clientId: configService.get('KAFKA_CLIENT_ID'),
+        },
+        topics: {
+          'agreements': {
+            topicName: configService.get('AGREEMENTS_TOPIC', 'agreements-events'),
+            entityTypes: ['agreement', 'contract']
+          },
+          'users': {
+            topicName: configService.get('USERS_TOPIC', 'users-events'),
+            entityTypes: ['user', 'profile']
+          }
         }
       })
     })
   ]
 })
 export class AppModule {}
+```
+
+### Быстрый старт (минимальная конфигурация)
+
+Для начала работы можно использовать дефолтный топик:
+
+```typescript
+OutboxModule.forRoot({
+  database: {
+    host: 'localhost',
+    port: 5432,
+    database: 'myapp',
+    username: 'postgres',
+    password: 'password'
+  },
+  kafka: {
+    brokers: ['localhost:9092'],
+    clientId: 'myapp-outbox'
+  },
+  defaultProcessing: {
+    chunkSize: 100,
+    maxRetries: 3,
+    retryDelayMs: 1000,
+    processingTimeoutMinutes: 5
+  }
+  // topics не указываем - будет использован дефолтный топик 'outbox-events'
+})
 ```
 
 ## Использование в контроллерах
@@ -90,7 +145,7 @@ import { OutboxEvent } from '@rolfcorp/nestjs-outbox';
 export class AgreementsController {
 
   @Post()
-  @OutboxEvent('CREATED', 'agreement')
+  @OutboxEvent('agreements', 'CREATED')
   async createAgreement(@Body() dto: CreateAgreementDto) {
     const agreement = await this.agreementService.create(dto);
     
@@ -101,7 +156,7 @@ export class AgreementsController {
   }
 
   @Put(':id')
-  @OutboxEvent('UPDATED', 'agreement')
+  @OutboxEvent('agreements', 'UPDATED')
   async updateAgreement(@Param('id') id: string, @Body() dto: UpdateAgreementDto) {
     const updatedAgreement = await this.agreementService.update(id, dto);
     
@@ -112,7 +167,7 @@ export class AgreementsController {
   }
 
   @Post(':id/complete')
-  @OutboxEvent('COMPLETED', 'agreement')
+  @OutboxEvent('agreements', 'COMPLETED')
   async completeAgreement(@Param('id') id: string) {
     const completedAgreement = await this.agreementService.complete(id);
     
@@ -123,6 +178,85 @@ export class AgreementsController {
   }
 }
 ```
+
+## Конфигурация топиков
+
+Библиотека поддерживает множественные топики Kafka. Каждый топик настраивается отдельно:
+
+### Структура конфигурации топиков
+
+```typescript
+topics: {
+  'agreements': {
+    topicName: 'agreements-events',           // Имя топика в Kafka
+    entityTypes: ['agreement', 'contract'],   // Разрешенные entity_type
+    processing: {                             // Переопределение настроек для топика
+      chunkSize: 50,
+      maxRetries: 5,
+      retryDelayMs: 2000,
+      processingTimeoutMinutes: 10
+    }
+  },
+  'users': {
+    topicName: 'users-events',
+    entityTypes: ['user', 'profile']
+    // processing не указан - используется defaultProcessing
+  },
+  'orders': {
+    topicName: 'orders-events', 
+    entityTypes: ['order', 'payment', 'delivery'],
+    processing: {
+      chunkSize: 200,
+      maxRetries: 2
+    }
+  }
+}
+```
+
+### Использование декоратора
+
+```typescript
+@OutboxEvent('agreements', 'CREATED')
+async createAgreement() { ... }
+
+@OutboxEvent('users', 'UPDATED') 
+async updateUser() { ... }
+
+@OutboxEvent('orders', 'COMPLETED')
+async completeOrder() { ... }
+
+// Дефолтный топик
+@OutboxEvent('default', 'CREATED')
+async createSomething() { ... }
+```
+
+### Определение entity_type
+
+Entity_type определяется автоматически:
+1. Из поля `entity_type` или `entityType` в объекте данных
+2. Если не найден - используется первый из `entityTypes` конфигурации топика
+3. Валидируется против разрешенных `entityTypes` для топика
+
+### Ключи Kafka
+
+Библиотека автоматически использует `entity_uuid` как ключ для всех событий. Это обеспечивает:
+
+- **Правильное партиционирование** - все события одной сущности идут в одну партицию
+- **Сохранение порядка** - события обрабатываются в том же порядке, в котором создавались
+- **Консистентность** - гарантия доставки связанных событий
+
+**Пример правильного порядка:**
+```
+agreement-123: CREATED → partition 0
+agreement-123: UPDATED → partition 0    // Тот же ключ = та же партиция
+agreement-123: COMPLETED → partition 0  // Порядок сохранён!
+```
+
+### Валидация
+
+Библиотека проверяет:
+- Существование конфигурации топика
+- Соответствие entity_type разрешенным для топика
 
 ## Требования к ответу
 
@@ -151,42 +285,42 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { OutboxMigrationService } from '@rolfcorp/nestjs-outbox';
 
 @Injectable()
-export class AppService implements OnModuleInit {
+export class DatabaseService implements OnModuleInit {
   constructor(
-    private readonly outboxMigration: OutboxMigrationService
+    private readonly outboxMigration: OutboxMigrationService,
   ) {}
 
   async onModuleInit() {
-    // Создание таблицы если не существует
-    await this.outboxMigration.createTableIfNotExists();
+    // Создать таблицу outbox_events
+    await this.outboxMigration.createOutboxTable();
     
-    // Добавление колонки entity_type если обновляетесь с старой версии
-    await this.outboxMigration.addEntityTypeColumnIfNotExists();
+    // Или удалить таблицу (осторожно!)
+    // await this.outboxMigration.dropOutboxTable();
   }
 }
 ```
 
-## Обработка событий
+## API методы
+
+### OutboxService
 
 ```typescript
-import { Injectable } from '@nestjs/common';
 import { OutboxService } from '@rolfcorp/nestjs-outbox';
 
 @Injectable()
-export class OutboxProcessor {
+export class SomeService {
   constructor(private readonly outboxService: OutboxService) {}
 
-  async processEvents() {
-    const result = await this.outboxService.sendOutboxEventsInChunks(50);
-    if (result._error) {
-      console.error('Ошибка обработки:', result._error);
-    } else {
-      console.log(`Обработано: ${result.data.totalProcessed} событий`);
-    }
+  // Отправить события в Kafka (обработка всех готовых событий)
+  async processOutboxEvents() {
+    const result = await this.outboxService.sendOutboxEventsInChunks();
+    console.log(`Processed: ${result.data.totalProcessed} events`);
+  }
+
+  // Очистить зависшие события
+  async cleanupStuckEvents() {
+    const result = await this.outboxService.cleanupStuckEvents();
+    console.log(`Cleaned up: ${result.data.processedCount} events`);
   }
 }
 ```
-
-## Лицензия
-
-MIT 

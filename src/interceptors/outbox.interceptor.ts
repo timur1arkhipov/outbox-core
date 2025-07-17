@@ -5,6 +5,7 @@ import {
   Injectable,
   Inject,
   Optional,
+  HttpStatus,
 } from '@nestjs/common';
 import { Observable, mergeMap } from 'rxjs';
 import { Reflector } from '@nestjs/core';
@@ -14,30 +15,14 @@ import { OutboxEventStatusEnum } from '../dto/outbox-event.dto';
 import { QueryTypes } from 'sequelize';
 import { WithError, OutboxError, OutboxErrorCode } from '../types/result.type';
 import {
+  OUTBOX_TOPIC_KEY,
   OUTBOX_EVENT_TYPE_KEY,
-  OUTBOX_ENTITY_TYPE_KEY,
 } from '../decorators/outbox-event.decorator';
 import { OUTBOX_CONFIG, EXTERNAL_SEQUELIZE_TOKEN } from '../constants';
-import { OutboxConfig } from '../interfaces/outbox-config.interface';
-
-const SQL_INSERT_OUTBOX_EVENT = `
-INSERT INTO :schema.:table (
-  entity_uuid,
-  entity_type,
-  event_date,
-  user_d_login,
-  status,
-  event_type,
-  payload_as_json
-) VALUES
-`;
-
-interface OutboxRequest extends Request {
-  userInfo?: {
-    username: string;
-  };
-  transaction?: any;
-}
+import type { OutboxConfig } from '../interfaces/outbox-config.interface';
+import { OutboxRequest } from '../types/outbox-request';
+import { sql_insertOutboxEvent } from '../sql';
+import { replaceTablePlaceholders } from '../utils/sql.utils';
 
 @Injectable()
 export class OutboxInterceptor implements NestInterceptor {
@@ -45,44 +30,51 @@ export class OutboxInterceptor implements NestInterceptor {
   private readonly sequelize: Sequelize;
 
   constructor(
-    @Optional() @InjectConnection() defaultSequelize: Sequelize,
+    @Optional() @InjectConnection() internalSequelize: Sequelize,
     @Optional() @Inject(EXTERNAL_SEQUELIZE_TOKEN) externalSequelize: Sequelize,
     private readonly reflector: Reflector,
     @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
   ) {
-    this.sequelize = externalSequelize || defaultSequelize;
+    this.sequelize = externalSequelize || internalSequelize;
 
     if (!this.sequelize) {
       throw new Error('No Sequelize connection provided.');
     }
 
     this.sql = {
-      insertOutboxEvent: this.replaceTablePlaceholders(SQL_INSERT_OUTBOX_EVENT),
+      insertOutboxEvent: replaceTablePlaceholders(
+        sql_insertOutboxEvent,
+        this.config.database.schema,
+        this.config.database.tableName,
+      ),
     };
   }
 
-  private replaceTablePlaceholders(sql: string): string {
-    return sql
-      .replace(':schema', this.config.database?.schema || 'public')
-      .replace(':table', this.config.database?.tableName || 'outbox_events');
-  }
+
 
   async intercept(
     context: ExecutionContext,
     next: CallHandler<any>,
   ): Promise<Observable<any>> {
+    const topicKey = this.reflector.getAllAndOverride(OUTBOX_TOPIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
     const eventType = this.reflector.getAllAndOverride(OUTBOX_EVENT_TYPE_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    const entityType = this.reflector.getAllAndOverride(
-      OUTBOX_ENTITY_TYPE_KEY,
-      [context.getHandler(), context.getClass()],
-    );
 
-    if (!eventType || !entityType) {
+
+    if (!topicKey || !eventType) {
       return next.handle();
+    }
+
+    const topicConfig = this.config.topics[topicKey];
+    if (!topicConfig) {
+      throw new Error(`Topic configuration '${topicKey}' not found`);
     }
 
     return next.handle().pipe(
@@ -93,70 +85,58 @@ export class OutboxInterceptor implements NestInterceptor {
 
         const data = Array.isArray(res.data) ? res.data : [res.data];
         const request = context.switchToHttp().getRequest<OutboxRequest>();
-        const user = request.userInfo || { username: 'system' };
+        const user = request.userInfo;
         let transaction = request.transaction;
-
-        if (transaction) {
-          if (transaction.finished) {
-            transaction = undefined;
+        
+        const outboxEventValues = data.map((item, index) => {
+          const eventDate = new Date();
+          eventDate.setMilliseconds(eventDate.getMilliseconds() + index);
+          
+          let entityType = item.entity_type || item.entityType;
+          if (!entityType && topicConfig.entityTypes.length > 0) {
+            entityType = topicConfig.entityTypes[0];
           }
-        }
-
-        for (const item of data) {
-          if (!item.uuid) {
-            throw new OutboxError(
-              400,
-              OutboxErrorCode.VALIDATION_ERROR,
-              'Outbox event requires uuid field in returned data object',
+          if (!entityType) {
+            entityType = 'unknown';
+          }
+          
+          if (!topicConfig.entityTypes.includes(entityType)) {
+            throw new Error(
+              `Entity type '${entityType}' is not allowed for topic '${topicKey}'. ` +
+              `Allowed types: ${topicConfig.entityTypes.join(', ')}`
             );
           }
-        }
 
-        const outboxEventValues: any[] = [];
-        const baseTime = Date.now();
-        
-        data.forEach((item, index) => {
-          const eventDate = new Date(baseTime + index);
+          const payload = JSON.parse(JSON.stringify(item));
           
-          outboxEventValues.push(
+          return [
             item.uuid,
             entityType,
             eventDate.toISOString(),
             user.username,
             OutboxEventStatusEnum.READY_TO_SEND,
             eventType,
-            JSON.stringify(item),
-          );
+            JSON.stringify(payload),
+          ];
         });
 
-        const valuesPerRow = 7;
-        const valuesClauses = data.map((_, index) => {
-          const startIndex = index * valuesPerRow + 1;
-          const placeholders = Array.from(
-            { length: valuesPerRow }, 
-            (_, i) => `$${startIndex + i}`
-          ).join(', ');
-          return `(${placeholders})`;
-        }).join(', ');
-
-        const fullSql = `${this.sql.insertOutboxEvent} ${valuesClauses}`;
-
         try {
-          await this.sequelize.query(fullSql, {
-            bind: outboxEventValues,
-            transaction,
-            type: QueryTypes.INSERT,
-          });
+          await this.sequelize.query(this.sql.insertOutboxEvent, {
+              replacements: {
+                outbox_events: outboxEventValues,
+              },
+              transaction,
+              type: QueryTypes.RAW,
+        });
 
         } catch (pgError) {
-          const error = new OutboxError(
-            500,
+          new OutboxError(
+            HttpStatus.INTERNAL_SERVER_ERROR,
             OutboxErrorCode.DATABASE_ERROR,
             'Ошибка при создании записи в Postgres: не удалось создать запись о Событии outbox',
             pgError instanceof Error ? pgError.stack : undefined,
             pgError,
-          );
-          error.throwAsHttpException('Global.OutboxInterceptor');
+          ).throwAsHttpException('Global.OutboxInterceptor');
         }
         return res;
       }),

@@ -6,13 +6,17 @@ export { OutboxMigrationService } from './services/outbox-migration.service';
 export { OutboxInitService } from './services/outbox-init.service';
 export { OutboxInterceptor } from './interceptors/outbox.interceptor';
 
-export { OutboxEvent } from './decorators/outbox-event.decorator';
+export { 
+  OutboxEvent,
+  type OutboxEventConfig,
+} from './decorators/outbox-event.decorator';
 
 export type {
   OutboxConfig,
   DatabaseConfig,
-  KafkaConfig,
+  KafkaConnectionConfig,
   ProcessingConfig,
+  TopicConfig,
 } from './interfaces/outbox-config.interface';
 export type {
   OutboxEventData,
@@ -40,3 +44,5 @@ export type {
   PromiseWithError,
   WithError,
 } from './types/result.type';
+
+export { replaceTablePlaceholders } from './utils/sql.utils';

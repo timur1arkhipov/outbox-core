@@ -1,4 +1,4 @@
-import { DynamicModule, Global, Module } from '@nestjs/common';
+import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
 import { Reflector, APP_INTERCEPTOR } from '@nestjs/core';
 import { OutboxService } from './services/outbox.service';
 import { OutboxDbService } from './services/outbox.db.service';
@@ -9,7 +9,7 @@ import { OutboxInterceptor } from './interceptors/outbox.interceptor';
 import {
   OutboxConfig,
   DatabaseConfig,
-  KafkaConfig,
+  KafkaConnectionConfig,
   OutboxModuleAsyncOptions,
 } from './interfaces/outbox-config.interface';
 import {
@@ -72,7 +72,7 @@ export class OutboxModule {
   }
 
   static forRootAsync(options: OutboxModuleAsyncOptions): DynamicModule {
-    const asyncProviders = [
+    const asyncProviders: Provider[] = [
       {
         provide: OUTBOX_CONFIG,
         useFactory: async (...args: any[]) => {
@@ -80,7 +80,7 @@ export class OutboxModule {
           return this.mergeWithDefaults(config);
         },
         inject: options.inject || [],
-      },
+      },  
       Reflector,
       OutboxDbService,
       OutboxProducerService,
@@ -114,9 +114,13 @@ export class OutboxModule {
     config: Partial<OutboxConfig>,
   ): OutboxConfig {
     const result: Partial<OutboxConfig> = {
-      processing: {
-        ...DEFAULT_OUTBOX_CONFIG.processing,
-        ...config.processing,
+      defaultProcessing: {
+        ...DEFAULT_OUTBOX_CONFIG.defaultProcessing,
+        ...config.defaultProcessing,
+      },
+      topics: {
+        ...DEFAULT_OUTBOX_CONFIG.topics,
+        ...config.topics,
       },
     };
 
@@ -139,8 +143,9 @@ export class OutboxModule {
     if (config.kafkaProducerToken) {
       result.kafkaProducerToken = config.kafkaProducerToken;
       result.kafka = {
-        topic: config.kafka?.topic || DEFAULT_OUTBOX_CONFIG.kafka!.topic,
-      } as KafkaConfig;
+        brokers: config.kafka?.brokers || DEFAULT_OUTBOX_CONFIG.kafka!.brokers,
+        clientId: config.kafka?.clientId || DEFAULT_OUTBOX_CONFIG.kafka!.clientId,
+      } as KafkaConnectionConfig;
     } else {
       if (!config.kafka) {
         throw new Error('Either kafka config or kafkaProducerToken must be provided');
@@ -148,7 +153,7 @@ export class OutboxModule {
       result.kafka = {
         ...DEFAULT_OUTBOX_CONFIG.kafka,
         ...config.kafka,
-      } as KafkaConfig;
+      } as KafkaConnectionConfig;
     }
 
     return result as OutboxConfig;

@@ -1,0 +1,1 @@
+{"version":3,"file":"outbox-event.decorator.d.ts","sourceRoot":"","sources":["../../../src/decorators/outbox-event.decorator.ts"],"names":[],"mappings":"AAEA,eAAO,MAAM,gBAAgB,qBAAqB,CAAC;AACnD,eAAO,MAAM,qBAAqB,sBAAsB,CAAC;AAEzD,MAAM,WAAW,iBAAiB;IAChC,QAAQ,EAAE,MAAM,CAAC;IACjB,SAAS,EAAE,MAAM,CAAC;CACnB;AAED,eAAO,MAAM,WAAW,GACtB,UAAU,MAAM,EAChB,WAAW,MAAM,gJAKhB,CAAC"}

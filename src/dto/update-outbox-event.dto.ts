@@ -21,5 +21,5 @@ export class UpdateOutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  status!: OutboxEventStatusEnum;
+  status: OutboxEventStatusEnum;
 }

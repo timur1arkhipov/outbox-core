@@ -12,7 +12,7 @@ export class ChunkProcessingDto {
     example: 250,
     nullable: false,
   })
-  totalProcessed!: number;
+  totalProcessed: number;
 
   @ApiProperty({
     title: 'Количество успешных чанков',
@@ -21,7 +21,7 @@ export class ChunkProcessingDto {
     example: 2,
     nullable: false,
   })
-  successChunks!: number;
+  successChunks: number;
 
   @ApiProperty({
     title: 'Количество неудачных чанков',
@@ -30,5 +30,5 @@ export class ChunkProcessingDto {
     example: 1,
     nullable: false,
   })
-  failedChunks!: number;
+  failedChunks: number;
 }

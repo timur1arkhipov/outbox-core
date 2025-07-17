@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, HttpStatus } from '@nestjs/common';
 import { Transaction } from 'sequelize';
 import { OutboxDbService } from './outbox.db.service';
 import { OutboxEventFiltersDto } from '../dto/outbox-event-filters.dto';
@@ -17,20 +17,56 @@ import {
   OutboxErrorCode,
 } from '../types/result.type';
 import { OUTBOX_CONFIG } from '../constants';
-import { OutboxConfig } from '../interfaces/outbox-config.interface';
+import type { OutboxConfig, ProcessingConfig } from '../interfaces/outbox-config.interface';
+
 
 @Injectable()
 export class OutboxService {
-  private readonly DEFAULT_CHUNK_SIZE = 100;
-  private readonly MAX_RETRIES = 3;
-  private readonly RETRY_DELAY_MS = 1000;
-  private readonly PROCESSING_TIMEOUT_MINUTES = 5;
-
   constructor(
     private readonly dbService: OutboxDbService,
     private readonly kafkaProducer: OutboxProducerService,
     @Inject(OUTBOX_CONFIG) private readonly config: OutboxConfig,
   ) {}
+
+  private getTopicConfigByEntityType(entityType: string): { topicName: string; processing: ProcessingConfig } {
+    for (const [topicKey, topicConfig] of Object.entries(this.config.topics)) {
+      if (topicConfig.entityTypes.includes(entityType)) {
+        return {
+          topicName: topicConfig.topicName,
+          processing: topicConfig.processing || this.config.defaultProcessing
+        };
+      }
+    }
+    
+    const defaultTopic = this.config.topics['default'];
+    if (defaultTopic) {
+      return {
+        topicName: defaultTopic.topicName,
+        processing: defaultTopic.processing || this.config.defaultProcessing
+      };
+    }
+    
+    throw new Error(`No topic configuration found for entity type: ${entityType}`);
+  }
+
+  private generateKafkaKey(msg: OutboxEventMsgDto): string {
+    return msg.entity_uuid;
+  }
+
+  private groupEventsByKey(events: OutboxEventMsgDto[]): Map<string, OutboxEventMsgDto[]> {
+    const eventsByKey = new Map<string, OutboxEventMsgDto[]>();
+    
+    for (const event of events) {
+      const key = this.generateKafkaKey(event);
+      
+      if (!eventsByKey.has(key)) {
+        eventsByKey.set(key, []);
+      }
+      eventsByKey.get(key)!.push(event);
+    }
+    
+    return eventsByKey;
+  }
 
   public async receiveOutboxEventInfomodels(
     filters: OutboxEventFiltersDto,
@@ -93,14 +129,33 @@ export class OutboxService {
 
   public async produceMessage(
     payload: OutboxEventMsgDto[],
+    targetTopic?: string,
   ): PromiseWithError<void> {
     try {
-      const topic = this.config.kafka?.topic || 'outbox-events';
+      let topic = targetTopic;
+      
+      if (!topic && payload.length > 0) {
+        const firstEvent = payload[0];
+        const entityType = firstEvent.entity_type || 'unknown';
+        const topicConfig = this.getTopicConfigByEntityType(entityType);
+        topic = topicConfig.topicName;
+      }
+      
+      if (!topic) {
+        topic = 'outbox-events';
+      }
       
       await this.kafkaProducer.send({
         topic,
         messages: payload.map((msg: OutboxEventMsgDto) => {
-          return { value: JSON.stringify(msg), key: msg.uuid };
+          const key = this.generateKafkaKey(msg);
+          
+          const cleanPayload = { ...msg };
+          
+          return { 
+            value: JSON.stringify(cleanPayload), 
+            key 
+          };
         }),
       });
 
@@ -108,7 +163,7 @@ export class OutboxService {
       return {
         data: null,
         _error: new OutboxError(
-          500,
+          HttpStatus.INTERNAL_SERVER_ERROR,
           OutboxErrorCode.KAFKA_ERROR,
           'Ошибка при отправке сообщений в Kafka',
           error instanceof Error ? error.stack : undefined,
@@ -123,62 +178,53 @@ export class OutboxService {
     };
   }
 
-  private checkStatus(
-    outboxEvents: OutboxEventDto[],
-    forbiddenStatuses: OutboxEventStatusEnum[],
-  ): OutboxError | null {
-    for (const event of outboxEvents) {
-      if (forbiddenStatuses.includes(event.status)) {
-        return new OutboxError(
-          400,
-          OutboxErrorCode.VALIDATION_ERROR,
-          `Ошибка валидации: данное изменение невозможно для События ${event.uuid} в статусе ${event.status}`,
-        );
-      }
-    }
-
-    return null;
-  }
-
   public async sendOutboxEventsInChunks(
     chunkSize?: number,
   ): PromiseWithError<ChunkProcessingDto> {
-    const actualChunkSize = chunkSize || this.DEFAULT_CHUNK_SIZE;
+    const actualChunkSize = chunkSize || this.config.defaultProcessing.chunkSize;
     let totalProcessed = 0;
     let successChunks = 0;
     let failedChunks = 0;
 
     await this.cleanupStuckEventsInt();
-    const lockedEvents = await this.lockAndMarkEventsAsProcessing();
 
-    if (lockedEvents._error) {
-      return {
-        data: null,
-        _error: lockedEvents._error,
-      };
-    }
+    while (true) { // плохо, но для теста пойдет
+      const lockedEvents = await this.receiveOutboxEventInfomodels({
+        status: [
+          OutboxEventStatusEnum.READY_TO_SEND,
+          OutboxEventStatusEnum.ERROR,
+        ],
+        with_lock: true,
+        limit: actualChunkSize,
+      });
 
-    if (!lockedEvents.data?.length) {
-      return {
-        data: { totalProcessed: 0, successChunks: 0, failedChunks: 0 },
-        _error: null,
-      };
-    }
+      if (lockedEvents._error) {
+        return {
+          data: null,
+          _error: lockedEvents._error,
+        };
+      }
 
-    const eventsByEntity = this.groupEventsByEntity(lockedEvents.data);
+      if (!lockedEvents.data?.length) {
+        break;
+      }
 
-    const entityUUIDs = Array.from(eventsByEntity.keys());
+      const updateResult = await this.updateOutboxEvents(
+        lockedEvents.data.map((event) => event.uuid),
+        { status: OutboxEventStatusEnum.PROCESSING },
+      );
+      if (updateResult._error) {
+        return {
+          data: null,
+          _error: updateResult._error,
+        };
+      }
 
-    const beforeEvents =
-      await this.selectBeforeOutboxEventsInfomodels(entityUUIDs);
-
-    const chunks = this.createChunksFromGroupedEvents(
-      eventsByEntity,
-      actualChunkSize,
-    );
-
-    for (const chunk of chunks) {
-      const result = await this.processEventChunk(
+      const eventsByEntity = this.groupEventsByEntity(lockedEvents.data);
+      const entityUUIDs = Array.from(eventsByEntity.keys());
+      const beforeEvents = await this.selectBeforeOutboxEventsInfomodels(entityUUIDs);
+      const chunk = Array.from(eventsByEntity.values()).flat();
+      const result = await this.processEventChunkByTopics(
         chunk,
         beforeEvents.data ?? [],
       );
@@ -188,7 +234,6 @@ export class OutboxService {
       } else {
         successChunks++;
       }
-
       totalProcessed += chunk.length;
     }
 
@@ -198,7 +243,7 @@ export class OutboxService {
     };
   }
 
-  private async processEventChunk(
+  private async processEventChunkByTopics(
     events: OutboxEventDto[],
     beforeEvents: OutboxEventDto[],
   ): PromiseWithError<void> {
@@ -208,31 +253,63 @@ export class OutboxService {
       return { data: null, _error: null };
     }
 
-    const sendResult = await this.sendChunkWithRetry(eventsMsg);
+    const eventsByTopic = new Map<string, OutboxEventMsgDto[]>();
+    
+    for (const event of eventsMsg) {
+      const entityType = event.entity_type || 'unknown';
+      const topicConfig = this.getTopicConfigByEntityType(entityType);
+      const topicName = topicConfig.topicName;
+      
+      if (!eventsByTopic.has(topicName)) {
+        eventsByTopic.set(topicName, []);
+      }
+      eventsByTopic.get(topicName)!.push(event);
+    }
 
-    await this.updateOutboxEvents(
-      eventsMsg.map((e) => e.uuid),
-      {
-        status: sendResult._error
-          ? OutboxEventStatusEnum.ERROR
-          : OutboxEventStatusEnum.SENT,
-      },
-    );
+    let hasErrors = false;
+    for (const [topicName, topicEvents] of eventsByTopic) {
+      const eventsByKey = this.groupEventsByKey(topicEvents);
+      
+      for (const [key, keyEvents] of eventsByKey) {
+        const sendResult = await this.sendChunkWithRetry(keyEvents, 1, topicName);
+        
+        await this.updateOutboxEvents(
+          keyEvents.map((e) => e.uuid),
+          {
+            status: sendResult._error
+              ? OutboxEventStatusEnum.ERROR
+              : OutboxEventStatusEnum.SENT,
+          },
+        );
+        
+        if (sendResult._error) {
+          hasErrors = true;
+        }
+      }
+    }
 
-    return sendResult;
+    return { 
+      data: null, 
+      _error: hasErrors ? new OutboxError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        OutboxErrorCode.KAFKA_ERROR,
+        'Some events failed to send',
+      ) : null 
+    };
   }
 
   private async sendChunkWithRetry(
     events: OutboxEventMsgDto[],
     attempt = 1,
+    targetTopic?: string,
   ): PromiseWithError<void> {
-    const result = await this.produceMessage(events);
+        const result = await this.produceMessage(events, targetTopic);
 
-    if (result._error && attempt < this.MAX_RETRIES) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, this.RETRY_DELAY_MS * attempt),
-      );
-      return this.sendChunkWithRetry(events, attempt + 1);
+        if (result._error && attempt < this.config.defaultProcessing.maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.config.defaultProcessing.retryDelayMs * attempt),
+          );
+      return this.sendChunkWithRetry(events, attempt + 1, targetTopic);
     }
 
     return result;
@@ -346,8 +423,8 @@ export class OutboxService {
 
   private async cleanupStuckEventsInt(): PromiseWithError<void> {
     await this.dbService.cleanupStuckEvents(
-      this.PROCESSING_TIMEOUT_MINUTES,
-      this.MAX_RETRIES,
+      this.config.defaultProcessing.processingTimeoutMinutes,
+      this.config.defaultProcessing.maxRetries,
     );
 
     return { data: null, _error: null };
@@ -394,8 +471,8 @@ export class OutboxService {
 
   public async cleanupStuckEvents(): PromiseWithError<CleanupResultDto> {
     const result = await this.dbService.cleanupStuckEvents(
-      this.PROCESSING_TIMEOUT_MINUTES,
-      this.MAX_RETRIES,
+      this.config.defaultProcessing.processingTimeoutMinutes,
+      this.config.defaultProcessing.maxRetries,
     );
 
     if (result._error) {

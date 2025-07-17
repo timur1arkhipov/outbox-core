@@ -24,9 +24,8 @@ export interface SslConfig {
   passphrase?: string;
 }
 
-export interface KafkaConfig {
+export interface KafkaConnectionConfig {
   brokers?: string[];
-  topic: string;
   clientId?: string;
   sasl?: SaslConfig;
   ssl?: SslConfig;
@@ -39,10 +38,17 @@ export interface ProcessingConfig {
   processingTimeoutMinutes: number;
 }
 
+export interface TopicConfig {
+  topicName: string;
+  entityTypes: string[];
+  processing?: ProcessingConfig;
+}
+
 export interface OutboxConfig {
   database?: DatabaseConfig;
-  kafka?: KafkaConfig;
-  processing: ProcessingConfig;
+  kafka?: KafkaConnectionConfig;
+  topics: Record<string, TopicConfig>;
+  defaultProcessing: ProcessingConfig;
 
   sequelizeToken?: string | symbol;
   kafkaProducerToken?: string | symbol;

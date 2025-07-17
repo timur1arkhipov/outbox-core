@@ -51,7 +51,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  uuid!: string;
+  uuid: string;
 
   @IsDefined({
     message: 'Отсутствует UUID сущности',
@@ -68,7 +68,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  entity_uuid!: string;
+  entity_uuid: string;
 
   @IsDefined({
     message: 'Отсутствует тип сущности',
@@ -83,7 +83,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  entity_type!: string;
+  entity_type: string;
 
   @IsDefined({
     message: 'Отсутствует дата создания События',
@@ -99,7 +99,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  created_at!: string;
+  created_at: string;
 
   @IsDefined({
     message: 'Отсутствует создатель',
@@ -114,7 +114,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  user_login!: string;
+  user_login: string;
 
   @IsDefined({
     message: 'Остутствует Статус События',
@@ -132,7 +132,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  status!: OutboxEventStatusEnum;
+  status: OutboxEventStatusEnum;
 
   @IsDefined({
     message: 'Остутствует Тип События',
@@ -149,7 +149,7 @@ export class OutboxEventDto {
     nullable: false,
     deprecated: false,
   })
-  type!: string;
+  type: string;
 
   @IsDefined({
     message: 'Не указаны данные события',
@@ -162,7 +162,7 @@ export class OutboxEventDto {
     nullable: true,
     deprecated: false,
   })
-  payload!: Record<string, any>;
+  payload: Record<string, any>;
 
   @IsOptional()
   @IsInt({

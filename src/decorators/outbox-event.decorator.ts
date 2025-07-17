@@ -1,17 +1,18 @@
 import { SetMetadata, applyDecorators } from '@nestjs/common';
 
-const OUTBOX_EVENT_TYPE_KEY = 'OUTBOX_EVENT_TYPE';
-const OUTBOX_ENTITY_TYPE_KEY = 'OUTBOX_ENTITY_TYPE';
+export const OUTBOX_TOPIC_KEY = 'OUTBOX_TOPIC_KEY';
+export const OUTBOX_EVENT_TYPE_KEY = 'OUTBOX_EVENT_TYPE';
 
 export interface OutboxEventConfig {
+  topicKey: string;
   eventType: string;
-  entityType: string;
 }
 
-export const OutboxEvent = (eventType: string, entityType: string) =>
+export const OutboxEvent = (
+  topicKey: string, 
+  eventType: string
+) =>
   applyDecorators(
+    SetMetadata(OUTBOX_TOPIC_KEY, topicKey),
     SetMetadata(OUTBOX_EVENT_TYPE_KEY, eventType),
-    SetMetadata(OUTBOX_ENTITY_TYPE_KEY, entityType),
   );
-
-export { OUTBOX_EVENT_TYPE_KEY, OUTBOX_ENTITY_TYPE_KEY };
